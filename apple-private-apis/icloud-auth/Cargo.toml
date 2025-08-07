@@ -3,7 +3,9 @@ name = "icloud_auth"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+vendored-botan = ["botan/vendored"]
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
@@ -25,7 +27,7 @@ reqwest = { version = "0.11.14", features = ["blocking", "json", "default-tls"] 
 omnisette = {path = "../omnisette", features = ["remote-anisette-v3"]}
 thiserror = "1.0.58"
 tokio = "1"
-botan = { version = "0.11.1", features = ["vendored"] }
+botan = { version = "0.11.1" }
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]

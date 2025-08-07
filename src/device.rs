@@ -160,20 +160,3 @@ fn afc_upload_dir<'a>(
         Ok(())
     })
 }
-
-#[tauri::command]
-pub async fn refresh_idevice(window: tauri::Window) {
-    match list_devices().await {
-        Ok(devices) => {
-            window
-                .emit("idevices", devices)
-                .expect("Failed to send devices");
-        }
-        Err(e) => {
-            window
-                .emit("idevices", Vec::<DeviceInfo>::new())
-                .expect("Failed to send error");
-            eprintln!("Failed to list devices: {}", e);
-        }
-    };
-}

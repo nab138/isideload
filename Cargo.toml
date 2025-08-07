@@ -3,6 +3,11 @@ name = "isideload"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+vendored-openssl = ["openssl/vendored"]
+vendored-botan = ["icloud_auth/vendored-botan"]
+
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 plist = { version = "1.7.2" }
@@ -11,4 +16,6 @@ uuid = "1.17.0"
 zip = "4.3.0"
 hex = "0.4.3"
 sha1 = "0.10.6"
-idevice = "0.1.37"
+idevice = { version = "0.1.37", features = ["afc", "usbmuxd", "installation_proxy"] }
+openssl = "0.10.73"
+futures = "0.3.31"

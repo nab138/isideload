@@ -2,10 +2,9 @@
 
 use crate::Error;
 use crate::{
+    certificate::CertificateIdentity,
+    developer_session::DeveloperDeviceType,
     device::{DeviceInfo, install_app},
-    sideloader::{
-        certificate::CertificateIdentity, developer_session::DeveloperDeviceType,
-    },
 };
 use std::{io::Write, path::PathBuf};
 
