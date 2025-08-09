@@ -32,7 +32,7 @@ impl CertificateIdentity {
         let hash_string = hex::encode(hasher.finalize()).to_lowercase();
         let key_path = configuration_path.join("keys").join(hash_string);
         fs::create_dir_all(&key_path)
-            .map_err(|e| Error::Certificate(format!("Failed to create key directory: {}", e)))?;
+            .map_err(|e| Error::Filesystem(format!("Failed to create key directory: {}", e)))?;
 
         let key_file = key_path.join("key.pem");
         let cert_file = key_path.join("cert.pem");
@@ -54,7 +54,7 @@ impl CertificateIdentity {
                 .private_key_to_pem_pkcs8()
                 .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
             fs::write(&key_file, pem_data)
-                .map_err(|e| Error::Certificate(format!("Failed to save key file: {}", e)))?;
+                .map_err(|e| Error::Filesystem(format!("Failed to save key file: {}", e)))?;
             key
         };
 
@@ -75,7 +75,7 @@ impl CertificateIdentity {
                 Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
             })?;
             fs::write(&cert_identity.cert_file, cert_pem).map_err(|e| {
-                Error::Certificate(format!("Failed to save certificate file: {}", e))
+                Error::Filesystem(format!("Failed to save certificate file: {}", e))
             })?;
 
             return Ok(cert_identity);
@@ -200,7 +200,7 @@ impl CertificateIdentity {
             Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
         })?;
         fs::write(&self.cert_file, cert_pem)
-            .map_err(|e| Error::Certificate(format!("Failed to save certificate file: {}", e)))?;
+            .map_err(|e| Error::Filesystem(format!("Failed to save certificate file: {}", e)))?;
 
         self.certificate = Some(certificate);
 

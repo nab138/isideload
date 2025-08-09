@@ -1,85 +1,81 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
-use crate::Error;
+use zsign_rust::ZSignOptions;
+
+use crate::application::Application;
+use crate::{Error, SideloadLogger};
 use crate::{
     certificate::CertificateIdentity,
-    developer_session::DeveloperDeviceType,
+    developer_session::{DeveloperDeviceType, DeveloperSession},
     device::{DeviceInfo, install_app},
 };
 use std::{io::Write, path::PathBuf};
 
+fn error_and_return(logger: &impl SideloadLogger, error: Error) -> Result<(), Error> {
+    logger.error(&error);
+    Err(error)
+}
+
 pub async fn sideload_app(
-    handle: &tauri::AppHandle,
-    window: &tauri::Window,
-    anisette_server: String,
-    device: DeviceInfo,
+    logger: impl SideloadLogger,
+    dev_session: &DeveloperSession,
+    device: &DeviceInfo,
     app_path: PathBuf,
 ) -> Result<(), Error> {
     if device.uuid.is_empty() {
-        return emit_error_and_return(window, "No device selected");
+        return error_and_return(&logger, Error::Generic("No device selected".to_string()));
     }
-    let dev_session = match crate::sideloader::apple::get_developer_session(
-        &handle,
-        window,
-        anisette_server.clone(),
-    )
-    .await
-    {
-        Ok(acc) => acc,
-        Err(e) => {
-            return emit_error_and_return(
-                window,
-                &format!("Failed to login to Apple account: {:?}", e),
-            );
-        }
-    };
+
     let team = match dev_session.get_team().await {
         Ok(t) => t,
         Err(e) => {
-            return emit_error_and_return(window, &format!("Failed to get team: {:?}", e));
+            return error_and_return(&logger, e);
         }
     };
-    window
-        .emit("build-output", "Successfully retrieved team".to_string())
-        .ok();
+
+    logger.log("Successfully retrieved team");
+
     ensure_device_registered(&dev_session, window, &team, &device).await?;
 
     let config_dir = handle.path().app_config_dir().map_err(|e| e.to_string())?;
     let cert = match CertificateIdentity::new(config_dir, &dev_session, get_apple_email()).await {
         Ok(c) => c,
         Err(e) => {
-            return emit_error_and_return(window, &format!("Failed to get certificate: {:?}", e));
+            return error_and_return(&logger, e);
         }
     };
-    window
-        .emit(
-            "build-output",
-            "Certificate acquired succesfully".to_string(),
-        )
-        .ok();
+
+    logger.log("Successfully acquired certificate");
+
     let mut list_app_id_response = match dev_session
         .list_app_ids(DeveloperDeviceType::Ios, &team)
         .await
     {
         Ok(ids) => ids,
         Err(e) => {
-            return emit_error_and_return(window, &format!("Failed to list app IDs: {:?}", e));
+            return error_and_return(&logger, e);
         }
     };
 
-    let mut app = crate::sideloader::application::Application::new(app_path);
+    let mut app = Application::new(app_path);
     let is_sidestore = app.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore";
     let main_app_bundle_id = match app.bundle.bundle_identifier() {
         Some(id) => id.to_string(),
         None => {
-            return emit_error_and_return(window, "No bundle identifier found in IPA");
+            return error_and_return(
+                &logger,
+                Error::InvalidBundle("No bundle identifier found in IPA".to_string()),
+            );
         }
     };
     let main_app_id_str = format!("{}.{}", main_app_bundle_id, team.team_id);
     let main_app_name = match app.bundle.bundle_name() {
         Some(name) => name.to_string(),
         None => {
-            return emit_error_and_return(window, "No bundle name found in IPA");
+            return error_and_return(
+                &logger,
+                Error::InvalidBundle("No bundle name found in IPA".to_string()),
+            );
         }
     };
 
@@ -88,13 +84,13 @@ pub async fn sideload_app(
     for ext in extensions.iter_mut() {
         if let Some(id) = ext.bundle_identifier() {
             if !(id.starts_with(&main_app_bundle_id) && id.len() > main_app_bundle_id.len()) {
-                return emit_error_and_return(
-                    window,
-                    &format!(
+                return error_and_return(
+                    &logger,
+                    Error::InvalidBundle(format!(
                         "Extension {} is not part of the main app bundle identifier: {}",
                         ext.bundle_name().unwrap_or("Unknown"),
                         id
-                    ),
+                    )),
                 );
             } else {
                 ext.set_bundle_identifier(&format!(
@@ -123,13 +119,13 @@ pub async fn sideload_app(
         .collect::<Vec<_>>();
 
     if app_ids_to_register.len() > list_app_id_response.available_quantity.try_into().unwrap() {
-        return emit_error_and_return(
-            window,
-            &format!(
+        return error_and_return(
+            &logger,
+            Error::InvalidBundle(format!(
                 "This app requires {} app ids, but you only have {} available",
                 app_ids_to_register.len(),
                 list_app_id_response.available_quantity
-            ),
+            )),
         );
     }
 
@@ -140,7 +136,7 @@ pub async fn sideload_app(
             .add_app_id(DeveloperDeviceType::Ios, &team, &name, &id)
             .await
         {
-            return emit_error_and_return(window, &format!("Failed to register app ID: {:?}", e));
+            return error_and_return(&logger, e);
         }
     }
     list_app_id_response = match dev_session
@@ -149,7 +145,7 @@ pub async fn sideload_app(
     {
         Ok(ids) => ids,
         Err(e) => {
-            return emit_error_and_return(window, &format!("Failed to list app IDs: {:?}", e));
+            return error_and_return(&logger, e);
         }
     };
 
@@ -169,19 +165,17 @@ pub async fn sideload_app(
     {
         Some(id) => id,
         None => {
-            return emit_error_and_return(
-                window,
-                &format!(
+            return error_and_return(
+                &logger,
+                Error::Generic(format!(
                     "Main app ID {} not found in registered app IDs",
                     main_app_id_str
-                ),
+                )),
             );
         }
     };
 
-    window
-        .emit("build-output", "Registered app IDs".to_string())
-        .ok();
+    logger.log("Successfully registered app IDs");
 
     for app_id in app_ids.iter_mut() {
         let app_group_feature_enabled = app_id
@@ -190,7 +184,9 @@ pub async fn sideload_app(
                 "APG3427HIY", /* Gotta love apple and their magic strings! */
             )
             .and_then(|v| v.as_boolean())
-            .ok_or("App group feature not found in app id")?;
+            .ok_or(Error::Generic(
+                "App group feature not found in app id".to_string(),
+            ))?;
         if !app_group_feature_enabled {
             let mut body = plist::Dictionary::new();
             body.insert("APG3427HIY".to_string(), plist::Value::Boolean(true));
@@ -200,10 +196,7 @@ pub async fn sideload_app(
             {
                 Ok(new_feats) => new_feats,
                 Err(e) => {
-                    return emit_error_and_return(
-                        window,
-                        &format!("Failed to update app ID features: {:?}", e),
-                    );
+                    return error_and_return(&logger, e);
                 }
             };
             app_id.features = new_features;
@@ -225,7 +218,7 @@ pub async fn sideload_app(
     {
         Ok(groups) => groups,
         Err(e) => {
-            return emit_error_and_return(window, &format!("Failed to list app groups: {:?}", e));
+            return error_and_return(&logger, e);
         }
     };
 
@@ -246,10 +239,7 @@ pub async fn sideload_app(
         {
             Ok(group) => group,
             Err(e) => {
-                return emit_error_and_return(
-                    window,
-                    &format!("Failed to register app group: {:?}", e),
-                );
+                return error_and_return(&logger, e);
             }
         }
     } else {
@@ -267,13 +257,7 @@ pub async fn sideload_app(
             )
             .await;
         if assign_res.is_err() {
-            return emit_error_and_return(
-                window,
-                &format!(
-                    "Failed to assign app group to app ID: {:?}",
-                    assign_res.err()
-                ),
-            );
+            return error_and_return(&logger, assign_res.err().unwrap());
         }
         // let provisioning_profile = match account
         //     // This doesn't seem right to me, but it's what Sideloader does... Shouldn't it be downloading the provisioning profile for this app ID, not the main?
@@ -291,9 +275,7 @@ pub async fn sideload_app(
         // provisioning_profiles.insert(app_id.identifier.clone(), provisioning_profile);
     }
 
-    window
-        .emit("build-output", "Registered app groups".to_string())
-        .ok();
+    logger.log("Successfully registered app groups");
 
     let provisioning_profile = match dev_session
         .download_team_provisioning_profile(DeveloperDeviceType::Ios, &team, &main_app_id)
@@ -301,10 +283,7 @@ pub async fn sideload_app(
     {
         Ok(pp /* tee hee */) => pp,
         Err(e) => {
-            return emit_error_and_return(
-                window,
-                &format!("Failed to download provisioning profile: {:?}", e),
-            );
+            return error_and_return(&logger, e);
         }
     };
 
@@ -318,9 +297,10 @@ pub async fn sideload_app(
         std::fs::remove_file(&profile_path).map_err(|e| e.to_string())?;
     }
 
-    let mut file = std::fs::File::create(&profile_path).map_err(|e| e.to_string())?;
+    let mut file =
+        std::fs::File::create(&profile_path).map_err(|e| Error::Filesystem(e.to_string()))?;
     file.write_all(&provisioning_profile.encoded_profile)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| Error::Filesystem(e.to_string()))?;
 
     // Without this, zsign complains it can't find the provision file
     #[cfg(target_os = "windows")]
@@ -332,67 +312,28 @@ pub async fn sideload_app(
     // TODO: Recursive for sub-bundles?
     app.bundle.write_info().map_err(|e| e.to_string())?;
 
-    window
-        .emit("build-output", "Signining app...".to_string())
-        .ok();
-
-    let zsign_command = handle.shell().sidecar("zsign").unwrap().args([
-        "-k",
-        cert.get_private_key_file_path().to_str().unwrap(),
-        "-c",
-        cert.get_certificate_file_path().to_str().unwrap(),
-        "-m",
-        profile_path.to_str().unwrap(),
-        app.bundle.bundle_dir.to_str().unwrap(),
-    ]);
-    let (mut rx, mut _child) = zsign_command.spawn().expect("Failed to spawn zsign");
-
-    let mut signing_failed = false;
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line_bytes) | CommandEvent::Stderr(line_bytes) => {
-                let line = String::from_utf8_lossy(&line_bytes);
-                window
-                    .emit("build-output", Some(line))
-                    .expect("failed to emit event");
-            }
-            CommandEvent::Terminated(result) => {
-                if result.code != Some(0) {
-                    window
-                        .emit("build-output", "App signing failed!".to_string())
-                        .ok();
-                    signing_failed = true;
-                    break;
-                }
-                window.emit("build-output", "App signed!").ok();
-
-                window
-                    .emit(
-                        "build-output",
-                        "Installing app (Transfer)... 0%".to_string(),
-                    )
-                    .ok();
-
-                let res = install_app(&device, &app.bundle.bundle_dir, |percentage| {
-                    window
-                        .emit("build-output", format!("Installing app... {}%", percentage))
-                        .expect("failed to emit event");
-                })
-                .await;
-                if let Err(e) = res {
-                    window
-                        .emit("build-output", format!("Failed to install app: {:?}", e))
-                        .ok();
-                    signing_failed = true;
-                }
-                break;
-            }
-            _ => {}
+    match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
+        .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
+        .with_pkey_file(cert.get_private_key_file_path().to_str().unwrap())
+        .with_prov_file(profile_path.to_str().unwrap())
+        .sign()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            return error_and_return(&logger, &format!("Failed to sign app: {:?}", e));
         }
-    }
+    };
 
-    if signing_failed {
-        return Err("Signing or installation failed".to_string());
+    logger.log("App signed!");
+
+    logger.log("Installing app (Transfer)... 0%");
+
+    let res = install_app(&device, &app.bundle.bundle_dir, |percentage| {
+        logger.log(format!("Installing app... {}%", percentage));
+    })
+    .await;
+    if let Err(e) = res {
+        return error_and_return(&logger, &format!("Failed to install app: {:?}", e));
     }
 
     Ok(())

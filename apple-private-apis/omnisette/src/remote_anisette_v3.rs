@@ -99,7 +99,7 @@ pub struct AnisetteState {
 impl Default for AnisetteState {
     fn default() -> Self {
         AnisetteState {
-            keychain_identifier: rand::thread_rng().gen::<[u8; 16]>(),
+            keychain_identifier: rand::rng().random::<[u8; 16]>(),
             adi_pb: None,
         }
     }
@@ -211,7 +211,7 @@ impl AnisetteClient {
             .header("X-Apple-I-MD-LU", encode_hex(&state.md_lu()))
             .header("X-Mme-Device-Id", state.device_id())
             .header("X-Apple-I-Client-Time", dt.format("%+").to_string())
-            .header("X-Apple-I-TimeZone", "EDT")
+            .header("X-Apple-I-TimeZone", "UTC")
             .header("X-Apple-Locale", "en_US")
     }
 
@@ -352,7 +352,7 @@ impl AnisetteClient {
                             identifier: base64_encode(&state.keychain_identifier),
                         };
                         connection
-                            .send(Message::Text(serde_json::to_string(&identifier)?))
+                            .send(Message::Text(serde_json::to_string(&identifier)?.into()))
                             .await?;
                     }
                     ProvisionInput::GiveStartProvisioningData => {
@@ -390,7 +390,7 @@ impl AnisetteClient {
                             spim: spim.to_string(),
                         };
                         connection
-                            .send(Message::Text(serde_json::to_string(&spim)?))
+                            .send(Message::Text(serde_json::to_string(&spim)?.into()))
                             .await?;
                     }
                     ProvisionInput::GiveEndProvisioningData { cpim } => {
@@ -427,7 +427,9 @@ impl AnisetteClient {
                             tk: response.get("tk").unwrap().as_string().unwrap(),
                         };
                         connection
-                            .send(Message::Text(serde_json::to_string(&end_provisioning)?))
+                            .send(Message::Text(
+                                serde_json::to_string(&end_provisioning)?.into(),
+                            ))
                             .await?;
                     }
                     ProvisionInput::ProvisioningSuccess { adi_pb } => {

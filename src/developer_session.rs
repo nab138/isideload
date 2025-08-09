@@ -56,7 +56,7 @@ impl DeveloperSession {
                 if let ICloudError::AuthSrpWithMessage(code, message) = e {
                     Error::DeveloperSession(code, format!("Developer request failed: {}", message))
                 } else {
-                    Error::Generic
+                    Error::Generic("Failed to send developer request".to_string())
                 }
             })?;
 
@@ -85,20 +85,22 @@ impl DeveloperSession {
         let teams = response
             .get("teams")
             .and_then(|v| v.as_array())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("teams".to_string()))?;
 
         let mut result = Vec::new();
         for team in teams {
-            let dict = team.as_dictionary().ok_or(Error::Parse)?;
+            let dict = team
+                .as_dictionary()
+                .ok_or(Error::Parse("team".to_string()))?;
             let name = dict
                 .get("name")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("name".to_string()))?
                 .to_string();
             let team_id = dict
                 .get("teamId")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("teamId".to_string()))?
                 .to_string();
             result.push(DeveloperTeam {
                 _name: name,
@@ -140,25 +142,27 @@ impl DeveloperSession {
         let devices = response
             .get("devices")
             .and_then(|v| v.as_array())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("devices".to_string()))?;
 
         let mut result = Vec::new();
         for device in devices {
-            let dict = device.as_dictionary().ok_or(Error::Parse)?;
+            let dict = device
+                .as_dictionary()
+                .ok_or(Error::Parse("device".to_string()))?;
             let device_id = dict
                 .get("deviceId")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("deviceId".to_string()))?
                 .to_string();
             let name = dict
                 .get("name")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("name".to_string()))?
                 .to_string();
             let device_number = dict
                 .get("deviceNumber")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("deviceNumber".to_string()))?
                 .to_string();
             result.push(DeveloperDevice {
                 _device_id: device_id,
@@ -187,22 +191,22 @@ impl DeveloperSession {
         let device_dict = response
             .get("device")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("device".to_string()))?;
 
         let device_id = device_dict
             .get("deviceId")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("deviceId".to_string()))?
             .to_string();
         let name = device_dict
             .get("name")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("name".to_string()))?
             .to_string();
         let device_number = device_dict
             .get("deviceNumber")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("deviceNumber".to_string()))?
             .to_string();
 
         Ok(DeveloperDevice {
@@ -226,25 +230,27 @@ impl DeveloperSession {
         let certs = response
             .get("certificates")
             .and_then(|v| v.as_array())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("certificates".to_string()))?;
 
         let mut result = Vec::new();
         for cert in certs {
-            let dict = cert.as_dictionary().ok_or(Error::Parse)?;
+            let dict = cert
+                .as_dictionary()
+                .ok_or(Error::Parse("certificate".to_string()))?;
             let name = dict
                 .get("name")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("name".to_string()))?
                 .to_string();
             let certificate_id = dict
                 .get("certificateId")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("certificateId".to_string()))?
                 .to_string();
             let serial_number = dict
                 .get("serialNumber")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("serialNumber".to_string()))?
                 .to_string();
             let machine_name = dict
                 .get("machineName")
@@ -254,7 +260,7 @@ impl DeveloperSession {
             let cert_content = dict
                 .get("certContent")
                 .and_then(|v| v.as_data())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("certContent".to_string()))?
                 .to_vec();
 
             result.push(DevelopmentCertificate {
@@ -309,11 +315,11 @@ impl DeveloperSession {
         let cert_dict = response
             .get("certRequest")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("certRequest".to_string()))?;
         let id = cert_dict
             .get("certRequestId")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("certRequestId".to_string()))?
             .to_string();
 
         Ok(id)
@@ -333,35 +339,37 @@ impl DeveloperSession {
         let app_ids = response
             .get("appIds")
             .and_then(|v| v.as_array())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("appIds".to_string()))?;
 
         let mut result = Vec::new();
         for app_id in app_ids {
-            let dict = app_id.as_dictionary().ok_or(Error::Parse)?;
+            let dict = app_id
+                .as_dictionary()
+                .ok_or(Error::Parse("appId".to_string()))?;
             let name = dict
                 .get("name")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("name".to_string()))?
                 .to_string();
             let app_id_id = dict
                 .get("appIdId")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("appIdId".to_string()))?
                 .to_string();
             let identifier = dict
                 .get("identifier")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("identifier".to_string()))?
                 .to_string();
             let features = dict
                 .get("features")
                 .and_then(|v| v.as_dictionary())
-                .ok_or(Error::Parse)?;
+                .ok_or(Error::Parse("features".to_string()))?;
             let expiration_date = if dict.contains_key("expirationDate") {
                 Some(
                     dict.get("expirationDate")
                         .and_then(|v| v.as_date())
-                        .ok_or(Error::Parse)?,
+                        .ok_or(Error::Parse("expirationDate".to_string()))?,
                 )
             } else {
                 None
@@ -379,11 +387,11 @@ impl DeveloperSession {
         let max_quantity = response
             .get("maxQuantity")
             .and_then(|v| v.as_unsigned_integer())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("maxQuantity".to_string()))?;
         let available_quantity = response
             .get("availableQuantity")
             .and_then(|v| v.as_unsigned_integer())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("availableQuantity".to_string()))?;
 
         Ok(ListAppIdsResponse {
             app_ids: result,
@@ -436,11 +444,11 @@ impl DeveloperSession {
         let cert_dict = response
             .get("appId")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("appId".to_string()))?;
         let feats = cert_dict
             .get("features")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("features".to_string()))?;
 
         Ok(feats.clone())
     }
@@ -475,25 +483,27 @@ impl DeveloperSession {
         let app_groups = response
             .get("applicationGroupList")
             .and_then(|v| v.as_array())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("applicationGroupList".to_string()))?;
 
         let mut result = Vec::new();
         for app_group in app_groups {
-            let dict = app_group.as_dictionary().ok_or(Error::Parse)?;
+            let dict = app_group
+                .as_dictionary()
+                .ok_or(Error::Parse("applicationGroup".to_string()))?;
             let application_group = dict
                 .get("applicationGroup")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("applicationGroup".to_string()))?
                 .to_string();
             let name = dict
                 .get("name")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("name".to_string()))?
                 .to_string();
             let identifier = dict
                 .get("identifier")
                 .and_then(|v| v.as_string())
-                .ok_or(Error::Parse)?
+                .ok_or(Error::Parse("identifier".to_string()))?
                 .to_string();
 
             result.push(ApplicationGroup {
@@ -526,21 +536,21 @@ impl DeveloperSession {
         let app_group_dict = response
             .get("applicationGroup")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("applicationGroup".to_string()))?;
         let application_group = app_group_dict
             .get("applicationGroup")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("applicationGroup".to_string()))?
             .to_string();
         let name = app_group_dict
             .get("name")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("name".to_string()))?
             .to_string();
         let identifier = app_group_dict
             .get("identifier")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("identifier".to_string()))?
             .to_string();
 
         Ok(ApplicationGroup {
@@ -593,21 +603,21 @@ impl DeveloperSession {
         let profile = response
             .get("provisioningProfile")
             .and_then(|v| v.as_dictionary())
-            .ok_or(Error::Parse)?;
+            .ok_or(Error::Parse("provisioningProfile".to_string()))?;
         let name = profile
             .get("name")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("name".to_string()))?
             .to_string();
         let provisioning_profile_id = profile
             .get("provisioningProfileId")
             .and_then(|v| v.as_string())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("provisioningProfileId".to_string()))?
             .to_string();
         let encoded_profile = profile
             .get("encodedProfile")
             .and_then(|v| v.as_data())
-            .ok_or(Error::Parse)?
+            .ok_or(Error::Parse("encodedProfile".to_string()))?
             .to_vec();
 
         Ok(ProvisioningProfile {

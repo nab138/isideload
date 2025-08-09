@@ -15,11 +15,7 @@ impl AnisetteData {
         let mut b = AnisetteHeaders::get_anisette_headers_provider(config.clone())?;
         let base_headers = b.provider.get_authentication_headers().await?;
 
-        Ok(AnisetteData {
-            base_headers,
-            generated_at: SystemTime::now(),
-            config,
-        })
+        Ok(AnisetteData { base_headers, generated_at: SystemTime::now(), config })
     }
 
     pub fn needs_refresh(&self) -> bool {
@@ -69,7 +65,7 @@ impl AnisetteData {
                 "X-Apple-App-Info".to_owned(),
                 "com.apple.gs.xcode.auth".to_owned(),
             );
-            headers.insert("X-Xcode-Version".to_owned(), "14.2 (14C18)".to_owned());
+            headers.insert("X-Xcode-Version".to_owned(), "11.2 (11B41)".to_owned());
         }
 
         if cpd {

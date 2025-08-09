@@ -1,5 +1,6 @@
 use crate::{anisette::AnisetteData, Error};
 use aes::cipher::block_padding::Pkcs7;
+use base64::{engine::general_purpose, Engine};
 use botan::Cipher;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
@@ -269,7 +270,6 @@ impl AppleAccount {
             return Err(err_check.err().unwrap());
         }
 
-        // --- D code logic starts here ---
         let encrypted_token = res
             .get("et")
             .ok_or(Error::Parse)?
@@ -286,7 +286,7 @@ impl AppleAccount {
                 "Encrypted token is in an unknown format.".to_string(),
             ));
         }
-        let iv = &encrypted_token[3..19]; // 16 bytes
+        let iv = &encrypted_token[3..19];
         let ciphertext_and_tag = &encrypted_token[19..];
 
         if sk.len() != 32 {
@@ -296,8 +296,6 @@ impl AppleAccount {
             return Err(Error::Parse);
         }
 
-        // Botan AES-256/GCM decryption with 16-byte IV and 3-byte AAD
-        // true = encrypt, false = decrypt
         let mut cipher = Cipher::new("AES-256/GCM", botan::CipherDirection::Decrypt)
             .map_err(|_| Error::Parse)?;
         cipher.set_key(sk).map_err(|_| Error::Parse)?;
@@ -357,14 +355,17 @@ impl AppleAccount {
     ///
     /// let anisette = AnisetteData::new();
     /// let account = AppleAccount::login(
-    ///   || ("test@waffle.me", "password")
-    ///   || "123123",
+    ///   || Ok(("test@waffle.me", "password"))
+    ///   || Ok("123123"),
     ///  anisette
     /// );
     /// ```
     /// Note: You would not provide the 2FA code like this, you would have to actually ask input for it.
     //TODO: add login_with_anisette and login, where login autodetcts anisette
-    pub async fn login_with_anisette<F: Fn() -> Result<(String, String), String>, G: Fn() -> Result<String, String>>(
+    pub async fn login_with_anisette<
+        F: Fn() -> Result<(String, String), String>,
+        G: Fn() -> Result<String, String>,
+    >(
         appleid_closure: F,
         tfa_closure: G,
         anisette: AnisetteData,
@@ -378,15 +379,25 @@ impl AppleAccount {
             match response {
                 LoginState::NeedsDevice2FA => response = _self.send_2fa_to_devices().await?,
                 LoginState::Needs2FAVerification => {
-                    response = _self.verify_2fa(tfa_closure().map_err(|e| {
-                        Error::AuthSrpWithMessage(0, format!("Failed to get 2FA code: {}", e))
-                    })?).await?
+                    response = _self
+                        .verify_2fa(tfa_closure().map_err(|e| {
+                            Error::AuthSrpWithMessage(0, format!("Failed to get 2FA code: {}", e))
+                        })?)
+                        .await?
                 }
                 LoginState::NeedsSMS2FA => response = _self.send_sms_2fa_to_devices(1).await?,
                 LoginState::NeedsSMS2FAVerification(body) => {
-                    response = _self.verify_sms_2fa(tfa_closure().map_err(|e| {
-                        Error::AuthSrpWithMessage(0, format!("Failed to get SMS 2FA code: {}", e))
-                    })?, body).await?
+                    response = _self
+                        .verify_sms_2fa(
+                            tfa_closure().map_err(|e| {
+                                Error::AuthSrpWithMessage(
+                                    0,
+                                    format!("Failed to get SMS 2FA code: {}", e),
+                                )
+                            })?,
+                            body,
+                        )
+                        .await?
                 }
                 LoginState::NeedsLogin => {
                     response = _self.login_email_pass(&username, &password).await?
@@ -735,7 +746,7 @@ impl AppleAccount {
         let dsid = spd.get("adsid").unwrap().as_string().unwrap();
         let token = spd.get("GsIdmsToken").unwrap().as_string().unwrap();
 
-        let identity_token = base64::encode(format!("{}:{}", dsid, token));
+        let identity_token = general_purpose::STANDARD.encode(format!("{}:{}", dsid, token));
 
         let valid_anisette = self.get_anisette().await;
 

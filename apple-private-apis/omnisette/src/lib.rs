@@ -6,9 +6,9 @@
 
 use crate::adi_proxy::{ADIProxyAnisetteProvider, ConfigurableADIProxy};
 use crate::anisette_headers_provider::AnisetteHeadersProvider;
-use adi_proxy::ADIError;
 use std::io;
 use std::path::PathBuf;
+use adi_proxy::ADIError;
 use thiserror::Error;
 
 pub mod adi_proxy;
@@ -58,7 +58,7 @@ pub enum AnisetteError {
     #[error("Missing Libraries")]
     MissingLibraries,
     #[error("{0}")]
-    Anyhow(#[from] anyhow::Error),
+    Anyhow(#[from] anyhow::Error)
 }
 
 pub const DEFAULT_ANISETTE_URL: &str = "https://ani.f1sh.me/";
@@ -85,7 +85,7 @@ impl AnisetteConfiguration {
             anisette_url: DEFAULT_ANISETTE_URL.to_string(),
             anisette_url_v3: DEFAULT_ANISETTE_URL_V3.to_string(),
             configuration_path: PathBuf::new(),
-            macos_serial: "0".to_string(),
+            macos_serial: "0".to_string()
         }
     }
 
@@ -157,15 +157,10 @@ impl AnisetteHeaders {
 
         #[cfg(feature = "remote-anisette-v3")]
         return Ok(AnisetteHeadersProviderRes::remote(Box::new(
-            remote_anisette_v3::RemoteAnisetteProviderV3::new(
-                configuration.anisette_url_v3,
-                configuration.configuration_path.clone(),
-                configuration.macos_serial.clone(),
-            ),
+            remote_anisette_v3::RemoteAnisetteProviderV3::new(configuration.anisette_url_v3, configuration.configuration_path.clone(), configuration.macos_serial.clone()),
         )));
 
         #[cfg(feature = "remote-anisette")]
-        #[allow(unreachable_code)]
         return Ok(AnisetteHeadersProviderRes::remote(Box::new(
             remote_anisette::RemoteAnisetteProvider::new(configuration.anisette_url),
         )));

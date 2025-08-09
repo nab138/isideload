@@ -1,8 +1,5 @@
-// use icloud_auth::ani
-use std::sync::Arc;
-
+use base64::engine::{general_purpose, Engine};
 use num_bigint::BigUint;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use srp::{
     client::{SrpClient, SrpClientVerifier},
@@ -11,15 +8,18 @@ use srp::{
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
     fn auth_debug() {
         // not a real account
-        let bytes_a = base64::decode("XChHXELsQ+ljxTFbvRMUsGJxiDIlOh9f8e+JzoegmVcOdAXXtPNzkHpAbAgSjyA+vXrTA93+BUu8EJ9+4xZu9g==").unwrap();
+        let bytes_a = general_purpose::STANDARD.decode("XChHXELsQ+ljxTFbvRMUsGJxiDIlOh9f8e+JzoegmVcOdAXXtPNzkHpAbAgSjyA+vXrTA93+BUu8EJ9+4xZu9g==").unwrap();
         let username = "apple3@f1sh.me";
         let password = "WaffleTest123";
-        let salt = base64::decode("6fK6ailLUcp2kJswJVrKjQ==").unwrap();
+        let salt = general_purpose::STANDARD
+            .decode("6fK6ailLUcp2kJswJVrKjQ==")
+            .unwrap();
         let iters = 20832;
 
         let mut password_hasher = sha2::Sha256::new();
@@ -41,7 +41,9 @@ mod tests {
 
         // apub: N2XHuh/4P1urPoBvDocF0RCRIl2pliZYqg9p6wGH0nnJdckJPn3M00jEqoM4teqH03HjG1murdcZiNHb5YayufW//+asW01XB7nYIIVvGiUFLRypYITEKYWBQ6h2q02GaZspYJKy98V8Fwcvr0ri+al7zJo1X1aoRKINyjV5TywhhwmTleI1qJkf+JBRYKKqO1XFtOTpQsysWD3ZJdK3K78kSgT3q0kXE3oDRMiHPAO77GFJZErYTuvI6QPRbOgcrn+RKV6AsjR5tUQAoSGRdtibdZTAQijJg788qVg+OFVCNZoY9GYVxa+Ze1bPGdkkgCYicTE8iNFG9KlJ+QpKgQ==
 
-        let a_random = base64::decode("ywN1O32vmBogb5Fyt9M7Tn8bbzLtDDbcYgPFpSy8n9E=").unwrap();
+        let a_random = general_purpose::STANDARD
+            .decode("ywN1O32vmBogb5Fyt9M7Tn8bbzLtDDbcYgPFpSy8n9E=")
+            .unwrap();
         let client = SrpClient::<Sha256>::new(&G_2048);
 
         let a_pub_compute =
@@ -49,14 +51,21 @@ mod tests {
         // expect it to be same to a_pub
         println!(
             "compute a_pub: {:?}",
-            base64::encode(&a_pub_compute.to_bytes_be())
+            general_purpose::STANDARD.encode(&a_pub_compute.to_bytes_be())
         );
 
-        let b_pub = base64::decode("HlWxsRmNi/9DCGxYCoqCTfdSvpbx3mrgFLQfOsgf3Rojn7MQQN/g63PwlBghUcVVB4//yAaRRnz/VIByl8thA9AKuVZl8k52PAHKSh4e7TuXSeYCFr0+GYu8/hFdMDl42219uzSuOXuaKGVKq6hxEAf3n3uXXgQRkXWtLFJ5nn1wq/emf46hYAHzc/pYyvckAdh9WDCw95IXbzKD8LcPw/0ZQoydMuXgW2ZKZ52fiyEs94IZ7L5RLL7jY1nVdwtsp2fxeqiZ3DNmVZ2GdNrbJGT//160tyd2evtUtehr8ygXNzjWdjV0cc4+1F38ywSPFyieVzVTYzDywRllgo3A5A==").unwrap();
-        println!("fixed b_pub: {:?}", base64::encode(&b_pub));
+        let b_pub = general_purpose::STANDARD.decode("HlWxsRmNi/9DCGxYCoqCTfdSvpbx3mrgFLQfOsgf3Rojn7MQQN/g63PwlBghUcVVB4//yAaRRnz/VIByl8thA9AKuVZl8k52PAHKSh4e7TuXSeYCFr0+GYu8/hFdMDl42219uzSuOXuaKGVKq6hxEAf3n3uXXgQRkXWtLFJ5nn1wq/emf46hYAHzc/pYyvckAdh9WDCw95IXbzKD8LcPw/0ZQoydMuXgW2ZKZ52fiyEs94IZ7L5RLL7jY1nVdwtsp2fxeqiZ3DNmVZ2GdNrbJGT//160tyd2evtUtehr8ygXNzjWdjV0cc4+1F38ywSPFyieVzVTYzDywRllgo3A5A==").unwrap();
+        println!(
+            "fixed b_pub: {:?}",
+            general_purpose::STANDARD.encode(&b_pub)
+        );
         println!("");
 
-        println!("salt: {:?} iterations: {:?}", base64::encode(&salt), iters);
+        println!(
+            "salt: {:?} iterations: {:?}",
+            general_purpose::STANDARD.encode(&salt),
+            iters
+        );
 
         let verifier: SrpClientVerifier<Sha256> = SrpClient::<Sha256>::process_reply(
             &client,

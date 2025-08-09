@@ -8,27 +8,26 @@ default = []
 vendored-botan = ["botan/vendored"]
 
 [dependencies]
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.142" }
-base64 = "0.13.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+base64 = "0.22"
 srp = { version = "0.6.0", path = "./rustcrypto-srp" }
-pbkdf2 = { version = "0.11.0" }
-sha2 = { version = "0.10.6" }
-rand = { version = "0.8.5" }
-rustls = { version = "0.20.7" }
-rustls-pemfile = { version = "1.0.1" }
-plist = { version = "1.7.2" }
+pbkdf2 = "0.11"
+sha2 = "0.10"
+rand = "0.9"
+rustls = "0.23"
+rustls-pemfile = "2.2"
+plist = "1.7.2"
 hmac = "0.12.1"
 num-bigint = "0.4.3"
 cbc = { version = "0.1.2", features = ["std"] }
 aes = "0.8.2"
-pkcs7 = "0.3.0"
+pkcs7 = "0.4.1"
 reqwest = { version = "0.11.14", features = ["blocking", "json", "default-tls"] }
 omnisette = {path = "../omnisette", features = ["remote-anisette-v3"]}
-thiserror = "1.0.58"
+thiserror = "2"
 tokio = "1"
-botan = { version = "0.11.1" }
-chrono = { version = "0.4", features = ["serde"] }
+botan = "0.12.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

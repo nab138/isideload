@@ -9,13 +9,15 @@ vendored-openssl = ["openssl/vendored"]
 vendored-botan = ["icloud_auth/vendored-botan"]
 
 [dependencies]
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 plist = { version = "1.7.2" }
 icloud_auth = {path = "./apple-private-apis/icloud-auth" }
 uuid = "1.17.0"
 zip = "4.3.0"
 hex = "0.4.3"
-sha1 = "0.10.6"
+sha1 = "0.10"
 idevice = { version = "0.1.37", features = ["afc", "usbmuxd", "installation_proxy"] }
 openssl = "0.10.73"
 futures = "0.3.31"
+zsign-rust = "0.1"
+thiserror = "2.0.12"

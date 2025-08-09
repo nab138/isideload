@@ -66,11 +66,16 @@ pub struct StoreServicesCoreADIProxy<'lt> {
 }
 
 impl StoreServicesCoreADIProxy<'_> {
-    pub fn new<'lt>(library_path: &PathBuf) -> Result<StoreServicesCoreADIProxy<'lt>, AnisetteError> {
+    pub fn new<'lt>(
+        library_path: &PathBuf,
+    ) -> Result<StoreServicesCoreADIProxy<'lt>, AnisetteError> {
         Self::with_custom_provisioning_path(library_path, library_path)
     }
 
-    pub fn with_custom_provisioning_path<'lt>(library_path: &PathBuf, provisioning_path: &PathBuf) -> Result<StoreServicesCoreADIProxy<'lt>, AnisetteError> {
+    pub fn with_custom_provisioning_path<'lt>(
+        library_path: &PathBuf,
+        provisioning_path: &PathBuf,
+    ) -> Result<StoreServicesCoreADIProxy<'lt>, AnisetteError> {
         // Should be safe if the library is correct.
         unsafe {
             LoaderHelpers::setup_hooks();
@@ -104,12 +109,8 @@ impl StoreServicesCoreADIProxy<'_> {
                         .ok_or(AnisetteError::InvalidLibraryFormat)?,
                 );
 
-            let path = CString::new(
-                native_library_path
-                    .to_str()
-                    .ok_or(AnisetteError::Misc)?,
-            )
-            .unwrap();
+            let path =
+                CString::new(native_library_path.to_str().ok_or(AnisetteError::Misc)?).unwrap();
             assert_eq!((adi_load_library_with_path)(path.as_ptr() as *const u8), 0);
 
             let adi_set_android_id = store_services_core
@@ -163,9 +164,7 @@ impl StoreServicesCoreADIProxy<'_> {
                 adi_otp_request: std::mem::transmute(adi_otp_request),
             };
 
-            proxy.set_provisioning_path(
-                provisioning_path.to_str().ok_or(AnisetteError::Misc)?,
-            )?;
+            proxy.set_provisioning_path(provisioning_path.to_str().ok_or(AnisetteError::Misc)?)?;
 
             Ok(proxy)
         }
@@ -370,7 +369,7 @@ unsafe fn __errno_location() -> *mut i32 {
 
 #[sysv64]
 fn arc4random() -> u32 {
-    rand::thread_rng().gen()
+    rand::rng().random()
 }
 
 #[sysv64]
@@ -412,10 +411,10 @@ impl LoaderHelpers {
 
 #[cfg(test)]
 mod tests {
+    use crate::AnisetteError;
     use crate::{AnisetteConfiguration, AnisetteHeaders};
     use log::info;
     use std::path::PathBuf;
-    use crate::AnisetteError;
 
     #[cfg(not(feature = "async"))]
     #[test]
@@ -436,7 +435,6 @@ mod tests {
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn fetch_anisette_ssc_async() -> Result<(), AnisetteError> {
-
         crate::tests::init_logger();
 
         let mut provider = AnisetteHeaders::get_ssc_anisette_headers_provider(
