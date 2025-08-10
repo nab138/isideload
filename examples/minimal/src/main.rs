@@ -2,8 +2,8 @@ use std::{env, path::PathBuf, sync::Arc};
 
 use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
-    AnisetteConfiguration, AppleAccount, DeveloperSession, SideloadConfiguration,
-    sideload::sideload_app,
+    AnisetteConfiguration, AppleAccount, SideloadConfiguration,
+    developer_session::DeveloperSession, sideload::sideload_app,
 };
 
 #[tokio::main]

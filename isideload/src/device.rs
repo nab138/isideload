@@ -8,6 +8,7 @@ use std::{future::Future, path::Path};
 use crate::Error;
 
 /// Installs an ***already signed*** app onto your device.
+/// To sign and install an app, see [`crate::sideload::sideload_app`]
 pub async fn install_app(
     provider: &impl IdeviceProvider,
     app_path: &Path,
