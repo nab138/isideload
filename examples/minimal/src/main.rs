@@ -47,6 +47,7 @@ async fn main() {
     // This is where certificates, mobileprovision, and anisette data will be stored
     let store_dir = std::env::current_dir().unwrap();
 
+    // DefaultLogger just prints to the stdout/stderr, but you can provide your own implementation
     sideload_app(DefaultLogger {}, &dev_session, &device, app_path, store_dir)
         .await
         .unwrap()
