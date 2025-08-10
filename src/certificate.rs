@@ -8,7 +8,10 @@ use openssl::{
     x509::{X509, X509Name, X509ReqBuilder},
 };
 use sha1::{Digest, Sha1};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::Error;
 use crate::developer_session::{DeveloperDeviceType, DeveloperSession, DeveloperTeam};
@@ -23,7 +26,7 @@ pub struct CertificateIdentity {
 
 impl CertificateIdentity {
     pub async fn new(
-        configuration_path: PathBuf,
+        configuration_path: &Path,
         dev_session: &DeveloperSession,
         apple_id: String,
     ) -> Result<Self, Error> {
@@ -31,8 +34,7 @@ impl CertificateIdentity {
         hasher.update(apple_id.as_bytes());
         let hash_string = hex::encode(hasher.finalize()).to_lowercase();
         let key_path = configuration_path.join("keys").join(hash_string);
-        fs::create_dir_all(&key_path)
-            .map_err(|e| Error::Filesystem(format!("Failed to create key directory: {}", e)))?;
+        fs::create_dir_all(&key_path).map_err(|e| Error::Filesystem(e))?;
 
         let key_file = key_path.join("key.pem");
         let cert_file = key_path.join("cert.pem");
@@ -53,8 +55,7 @@ impl CertificateIdentity {
             let pem_data = key
                 .private_key_to_pem_pkcs8()
                 .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
-            fs::write(&key_file, pem_data)
-                .map_err(|e| Error::Filesystem(format!("Failed to save key file: {}", e)))?;
+            fs::write(&key_file, pem_data).map_err(|e| Error::Filesystem(e))?;
             key
         };
 
@@ -74,9 +75,7 @@ impl CertificateIdentity {
             let cert_pem = cert.to_pem().map_err(|e| {
                 Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
             })?;
-            fs::write(&cert_identity.cert_file, cert_pem).map_err(|e| {
-                Error::Filesystem(format!("Failed to save certificate file: {}", e))
-            })?;
+            fs::write(&cert_identity.cert_file, cert_pem).map_err(|e| Error::Filesystem(e))?;
 
             return Ok(cert_identity);
         }
@@ -199,19 +198,18 @@ impl CertificateIdentity {
         let cert_pem = certificate.to_pem().map_err(|e| {
             Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
         })?;
-        fs::write(&self.cert_file, cert_pem)
-            .map_err(|e| Error::Filesystem(format!("Failed to save certificate file: {}", e)))?;
+        fs::write(&self.cert_file, cert_pem).map_err(|e| Error::Filesystem(e))?;
 
         self.certificate = Some(certificate);
 
         Ok(())
     }
 
-    pub fn get_certificate_file_path(&self) -> &PathBuf {
+    pub fn get_certificate_file_path(&self) -> &Path {
         &self.cert_file
     }
 
-    pub fn get_private_key_file_path(&self) -> &PathBuf {
+    pub fn get_private_key_file_path(&self) -> &Path {
         &self.key_file
     }
 }

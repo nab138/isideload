@@ -5,14 +5,19 @@ pub mod developer_session;
 pub mod device;
 pub mod sideload;
 
+use std::io::Error as IOError;
+
 pub use developer_session::{
     AppId, ApplicationGroup, DeveloperDevice, DeveloperDeviceType, DeveloperSession, DeveloperTeam,
     DevelopmentCertificate, ListAppIdsResponse, ProvisioningProfile,
 };
+pub use icloud_auth::{AnisetteConfiguration, AppleAccount};
 
+use idevice::IdeviceError;
 use thiserror::Error as ThisError;
+use zsign_rust::ZSignError;
 
-#[derive(Debug, Clone, ThisError)]
+#[derive(Debug, ThisError)]
 pub enum Error {
     #[error("Authentication error {0}: {1}")]
     Auth(i64, String),
@@ -26,23 +31,27 @@ pub enum Error {
     InvalidBundle(String),
     #[error("Certificate error: {0}")]
     Certificate(String),
-    #[error("Failed to use files: {0}")]
-    Filesystem(String),
+    #[error(transparent)]
+    Filesystem(#[from] IOError),
+    #[error(transparent)]
+    IdeviceError(#[from] IdeviceError),
+    #[error(transparent)]
+    ZSignError(#[from] ZSignError),
 }
 
 pub trait SideloadLogger {
-    async fn log(&self, message: &str);
-    async fn error(&self, error: &Error);
+    fn log(&self, message: &str);
+    fn error(&self, error: &Error);
 }
 
 pub struct DefaultLogger;
 
 impl SideloadLogger for DefaultLogger {
-    async fn log(&self, message: &str) {
+    fn log(&self, message: &str) {
         println!("{message}");
     }
 
-    async fn error(&self, error: &Error) {
+    fn error(&self, error: &Error) {
         eprintln!("Error: {}", error);
     }
 }

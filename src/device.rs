@@ -6,9 +6,10 @@ use idevice::{
     usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
 };
 use serde::{Deserialize, Serialize};
-use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
+use std::{future::Future, path::Path};
+
+use crate::Error;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct DeviceInfo {
@@ -69,34 +70,32 @@ pub async fn list_devices() -> Result<Vec<DeviceInfo>, String> {
 
 pub async fn install_app(
     device: &DeviceInfo,
-    app_path: &PathBuf,
+    app_path: &Path,
     callback: impl Fn(u64) -> (),
-) -> Result<(), String> {
+) -> Result<(), Error> {
     let mut usbmuxd = UsbmuxdConnection::default()
         .await
-        .map_err(|e| format!("Failed to connect to usbmuxd: {:?}", e))?;
+        .map_err(|e| Error::IdeviceError(e))?;
     let device = usbmuxd
         .get_device(&device.uuid)
         .await
-        .map_err(|e| format!("Failed to get device: {:?}", e))?;
+        .map_err(|e| Error::IdeviceError(e))?;
 
     let provider = device.to_provider(UsbmuxdAddr::from_env_var().unwrap(), "y-code");
 
     let mut afc_client = AfcClient::connect(&provider)
         .await
-        .map_err(|e| format!("Failed to connect to AFC: {:?}", e))?;
+        .map_err(|e| Error::IdeviceError(e))?;
 
     let dir = format!(
         "PublicStaging/{}",
         app_path.file_name().unwrap().to_string_lossy()
     );
-    afc_upload_dir(&mut afc_client, app_path, &dir)
-        .await
-        .map_err(|e| format!("Failed to upload directory: {:?}", e))?;
+    afc_upload_dir(&mut afc_client, app_path, &dir).await?;
 
     let mut instproxy_client = InstallationProxyClient::connect(&provider)
         .await
-        .map_err(|e| format!("Failed to connect to installation proxy: {:?}", e))?;
+        .map_err(|e| Error::IdeviceError(e))?;
 
     let mut options = plist::Dictionary::new();
     options.insert("PackageType".to_string(), "Developer".into());
@@ -110,25 +109,24 @@ pub async fn install_app(
             (),
         )
         .await
-        .map_err(|e| format!("Failed to install app: {:?}", e))?;
+        .map_err(|e| Error::IdeviceError(e))?;
 
     Ok(())
 }
 
 fn afc_upload_dir<'a>(
     afc_client: &'a mut AfcClient,
-    path: &'a PathBuf,
+    path: &'a Path,
     afc_path: &'a str,
-) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>> {
+) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
     Box::pin(async move {
-        let entries =
-            std::fs::read_dir(path).map_err(|e| format!("Failed to read directory: {}", e))?;
+        let entries = std::fs::read_dir(path).map_err(|e| Error::Filesystem(e))?;
         afc_client
             .mk_dir(afc_path)
             .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(|e| Error::IdeviceError(e))?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let entry = entry.map_err(|e| Error::Filesystem(e))?;
             let path = entry.path();
             if path.is_dir() {
                 let new_afc_path = format!(
@@ -148,13 +146,12 @@ fn afc_upload_dir<'a>(
                         idevice::afc::opcode::AfcFopenMode::WrOnly,
                     )
                     .await
-                    .map_err(|e| format!("Failed to open file: {}", e))?;
-                let bytes =
-                    std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+                    .map_err(|e| Error::IdeviceError(e))?;
+                let bytes = std::fs::read(&path).map_err(|e| Error::Filesystem(e))?;
                 file_handle
                     .write(&bytes)
                     .await
-                    .map_err(|e| format!("Failed to write file: {}", e))?;
+                    .map_err(|e| Error::IdeviceError(e))?;
             }
         }
         Ok(())

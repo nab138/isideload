@@ -3,7 +3,7 @@
 use zsign_rust::ZSignOptions;
 
 use crate::application::Application;
-use crate::{Error, SideloadLogger};
+use crate::{DeveloperTeam, Error, SideloadLogger};
 use crate::{
     certificate::CertificateIdentity,
     developer_session::{DeveloperDeviceType, DeveloperSession},
@@ -16,11 +16,20 @@ fn error_and_return(logger: &impl SideloadLogger, error: Error) -> Result<(), Er
     Err(error)
 }
 
+/// Sideloads an `.ipa` or `.app` onto a device.
+///
+/// # Arguments
+/// - `logger` — Reports progress and errors.
+/// - `dev_session` — Authenticated Apple developer session ([`crate::developer_session::DeveloperSession`]).
+/// - `device` — Target device information ([`crate::device::DeviceInfo`]).
+/// - `app_path` — Path to the `.ipa` file or `.app` bundle to sign and install
+/// - `store_dir` — Directory used to store intermediate artifacts (profiles, certs, etc.). This directory will not be cleared at the end.
 pub async fn sideload_app(
     logger: impl SideloadLogger,
     dev_session: &DeveloperSession,
     device: &DeviceInfo,
     app_path: PathBuf,
+    store_dir: PathBuf,
 ) -> Result<(), Error> {
     if device.uuid.is_empty() {
         return error_and_return(&logger, Error::Generic("No device selected".to_string()));
@@ -35,10 +44,15 @@ pub async fn sideload_app(
 
     logger.log("Successfully retrieved team");
 
-    ensure_device_registered(&dev_session, window, &team, &device).await?;
+    ensure_device_registered(&logger, dev_session, &team, device).await?;
 
-    let config_dir = handle.path().app_config_dir().map_err(|e| e.to_string())?;
-    let cert = match CertificateIdentity::new(config_dir, &dev_session, get_apple_email()).await {
+    let cert = match CertificateIdentity::new(
+        &store_dir,
+        &dev_session,
+        dev_session.account.apple_id.clone(),
+    )
+    .await
+    {
         Ok(c) => c,
         Err(e) => {
             return error_and_return(&logger, e);
@@ -57,7 +71,7 @@ pub async fn sideload_app(
         }
     };
 
-    let mut app = Application::new(app_path);
+    let mut app = Application::new(app_path)?;
     let is_sidestore = app.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore";
     let main_app_bundle_id = match app.bundle.bundle_identifier() {
         Some(id) => id.to_string(),
@@ -287,20 +301,15 @@ pub async fn sideload_app(
         }
     };
 
-    let profile_path = handle
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join(format!("{}.mobileprovision", main_app_id_str));
+    let profile_path = store_dir.join(format!("{}.mobileprovision", main_app_id_str));
 
     if profile_path.exists() {
-        std::fs::remove_file(&profile_path).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&profile_path).map_err(|e| Error::Filesystem(e))?;
     }
 
-    let mut file =
-        std::fs::File::create(&profile_path).map_err(|e| Error::Filesystem(e.to_string()))?;
+    let mut file = std::fs::File::create(&profile_path).map_err(|e| Error::Filesystem(e))?;
     file.write_all(&provisioning_profile.encoded_profile)
-        .map_err(|e| Error::Filesystem(e.to_string()))?;
+        .map_err(|e| Error::Filesystem(e))?;
 
     // Without this, zsign complains it can't find the provision file
     #[cfg(target_os = "windows")]
@@ -310,7 +319,7 @@ pub async fn sideload_app(
     }
 
     // TODO: Recursive for sub-bundles?
-    app.bundle.write_info().map_err(|e| e.to_string())?;
+    app.bundle.write_info()?;
 
     match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
         .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
@@ -320,7 +329,7 @@ pub async fn sideload_app(
     {
         Ok(_) => {}
         Err(e) => {
-            return error_and_return(&logger, &format!("Failed to sign app: {:?}", e));
+            return error_and_return(&logger, Error::ZSignError(e));
         }
     };
 
@@ -329,12 +338,37 @@ pub async fn sideload_app(
     logger.log("Installing app (Transfer)... 0%");
 
     let res = install_app(&device, &app.bundle.bundle_dir, |percentage| {
-        logger.log(format!("Installing app... {}%", percentage));
+        logger.log(&format!("Installing app... {}%", percentage));
     })
     .await;
     if let Err(e) = res {
-        return error_and_return(&logger, &format!("Failed to install app: {:?}", e));
+        return error_and_return(&logger, e);
     }
 
+    Ok(())
+}
+
+pub async fn ensure_device_registered(
+    logger: &impl SideloadLogger,
+    dev_session: &DeveloperSession,
+    team: &DeveloperTeam,
+    device: &DeviceInfo,
+) -> Result<(), Error> {
+    let devices = dev_session
+        .list_devices(DeveloperDeviceType::Ios, team)
+        .await;
+    if let Err(e) = devices {
+        return error_and_return(logger, e);
+    }
+    let devices = devices.unwrap();
+    if !devices.iter().any(|d| d.device_number == device.uuid) {
+        logger.log("Device not found in your account");
+        // TODO: Actually test!
+        dev_session
+            .add_device(DeveloperDeviceType::Ios, team, &device.name, &device.uuid)
+            .await?;
+        logger.log("Successfully added device to your account");
+    }
+    logger.log("Device is a development device");
     Ok(())
 }

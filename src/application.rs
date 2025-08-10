@@ -1,5 +1,6 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
+use crate::Error;
 use crate::bundle::Bundle;
 use std::fs::File;
 use std::path::PathBuf;
@@ -11,9 +12,11 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new(path: PathBuf) -> Result<Self, Error> {
         if !path.exists() {
-            panic!("Application path does not exist: {}", path.display());
+            return Err(Error::InvalidBundle(
+                "Application path does not exist".to_string(),
+            ));
         }
 
         let mut bundle_path = path.clone();
@@ -23,21 +26,24 @@ impl Application {
             let temp_dir = std::env::temp_dir();
             let temp_path = temp_dir.join(path.file_name().unwrap());
             if temp_path.exists() {
-                std::fs::remove_dir_all(&temp_path)
-                    .expect("Failed to remove existing temporary files");
+                std::fs::remove_dir_all(&temp_path).map_err(|e| Error::Filesystem(e))?;
             }
-            std::fs::create_dir_all(&temp_path).expect("Failed to create temporary directory");
+            std::fs::create_dir_all(&temp_path).map_err(|e| Error::Filesystem(e))?;
 
-            let file = File::open(&path).expect("Failed to open application file");
-            let mut archive = ZipArchive::new(file).expect("Failed to read application archive");
-            archive
-                .extract(&temp_path)
-                .expect("Failed to extract application archive");
+            let file = File::open(&path).map_err(|e| Error::Filesystem(e))?;
+            let mut archive = ZipArchive::new(file).map_err(|e| {
+                Error::Generic(format!("Failed to open application archive: {}", e))
+            })?;
+            archive.extract(&temp_path).map_err(|e| {
+                Error::Generic(format!("Failed to extract application archive: {}", e))
+            })?;
 
             let payload_folder = temp_path.join("Payload");
             if payload_folder.exists() && payload_folder.is_dir() {
                 let app_dirs: Vec<_> = std::fs::read_dir(&payload_folder)
-                    .expect("Failed to read Payload directory")
+                    .map_err(|e| {
+                        Error::Generic(format!("Failed to read Payload directory: {}", e))
+                    })?
                     .filter_map(Result::ok)
                     .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
                     .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "app"))
@@ -45,18 +51,24 @@ impl Application {
                 if app_dirs.len() == 1 {
                     bundle_path = app_dirs[0].path();
                 } else if app_dirs.is_empty() {
-                    panic!("No .app directory found in Payload");
+                    return Err(Error::InvalidBundle(
+                        "No .app directory found in Payload".to_string(),
+                    ));
                 } else {
-                    panic!("Multiple .app directories found in Payload");
+                    return Err(Error::InvalidBundle(
+                        "Multiple .app directories found in Payload".to_string(),
+                    ));
                 }
             } else {
-                panic!("No Payload directory found in the application archive");
+                return Err(Error::InvalidBundle(
+                    "No Payload directory found in the application archive".to_string(),
+                ));
             }
         }
-        let bundle = Bundle::new(bundle_path).expect("Failed to create application bundle");
+        let bundle = Bundle::new(bundle_path)?;
 
-        Application {
+        Ok(Application {
             bundle, /*temp_path*/
-        }
+        })
     }
 }
