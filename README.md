@@ -15,7 +15,7 @@ To use isideload, add the following to your `Cargo.toml`:
 isideload = { version = "0.1.0", features = ["vendored-openssl", "vendored-botan" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL and Botan installed on your system.
 ```
 
-Then, in your Rust code, you can use it as follows:
+See [examples/minimal/src/main.rs](examples/minimal/src/main.rs) for usage examples.
 
 ## Licensing
 
