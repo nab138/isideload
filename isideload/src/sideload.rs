@@ -1,39 +1,64 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
+use idevice::IdeviceService;
+use idevice::lockdown::LockdownClient;
+use idevice::provider::IdeviceProvider;
 use zsign_rust::ZSignOptions;
 
 use crate::application::Application;
-use crate::{DeveloperTeam, Error, SideloadLogger};
+use crate::device::install_app;
+use crate::{DeveloperTeam, Error, SideloadConfiguration, SideloadLogger};
 use crate::{
     certificate::CertificateIdentity,
     developer_session::{DeveloperDeviceType, DeveloperSession},
-    device::{DeviceInfo, install_app},
 };
 use std::{io::Write, path::PathBuf};
 
-fn error_and_return(logger: &impl SideloadLogger, error: Error) -> Result<(), Error> {
+fn error_and_return(logger: &Box<dyn SideloadLogger>, error: Error) -> Result<(), Error> {
     logger.error(&error);
     Err(error)
 }
 
-/// Sideloads an `.ipa` or `.app` onto a device.
+/// Signs and installs an `.ipa` or `.app` onto a device.
 ///
 /// # Arguments
-/// - `logger` — Reports progress and errors.
-/// - `dev_session` — Authenticated Apple developer session ([`crate::developer_session::DeveloperSession`]).
-/// - `device` — Target device information ([`crate::device::DeviceInfo`]).
-/// - `app_path` — Path to the `.ipa` file or `.app` bundle to sign and install
-/// - `store_dir` — Directory used to store intermediate artifacts (profiles, certs, etc.). This directory will not be cleared at the end.
+/// - `device_provider` - [`idevice::provider::IdeviceProvider`] for the device
+/// - `dev_session` - Authenticated Apple developer session ([`crate::developer_session::DeveloperSession`]).
+/// - `app_path` - Path to the `.ipa` file or `.app` bundle to sign and install
+/// - `config` - Sideload configuration options ([`crate::SideloadConfiguration`])
 pub async fn sideload_app(
-    logger: impl SideloadLogger,
+    device_provider: &impl IdeviceProvider,
     dev_session: &DeveloperSession,
-    device: &DeviceInfo,
     app_path: PathBuf,
-    store_dir: PathBuf,
+    config: SideloadConfiguration,
 ) -> Result<(), Error> {
-    if device.uuid.is_empty() {
-        return error_and_return(&logger, Error::Generic("No device selected".to_string()));
-    }
+    let logger = config.logger;
+    let mut lockdown_client = match LockdownClient::connect(device_provider).await {
+        Ok(l) => l,
+        Err(e) => {
+            return error_and_return(&logger, Error::IdeviceError(e));
+        }
+    };
+
+    let device_name = lockdown_client
+        .get_value("DeviceName", None)
+        .await
+        .map_err(|e| Error::IdeviceError(e))?
+        .as_string()
+        .ok_or(Error::Generic(
+            "Failed to convert DeviceName to string".to_string(),
+        ))?
+        .to_string();
+
+    let device_uuid = lockdown_client
+        .get_value("UniqueDeviceID", None)
+        .await
+        .map_err(|e| Error::IdeviceError(e))?
+        .as_string()
+        .ok_or(Error::Generic(
+            "Failed to convert UniqueDeviceID to string".to_string(),
+        ))?
+        .to_string();
 
     let team = match dev_session.get_team().await {
         Ok(t) => t,
@@ -44,12 +69,13 @@ pub async fn sideload_app(
 
     logger.log("Successfully retrieved team");
 
-    ensure_device_registered(&logger, dev_session, &team, device).await?;
+    ensure_device_registered(&logger, dev_session, &team, &device_uuid, &device_name).await?;
 
     let cert = match CertificateIdentity::new(
-        &store_dir,
+        &config.store_dir,
         &dev_session,
         dev_session.account.apple_id.clone(),
+        config.machine_name,
     )
     .await
     {
@@ -301,7 +327,9 @@ pub async fn sideload_app(
         }
     };
 
-    let profile_path = store_dir.join(format!("{}.mobileprovision", main_app_id_str));
+    let profile_path = config
+        .store_dir
+        .join(format!("{}.mobileprovision", main_app_id_str));
 
     if profile_path.exists() {
         std::fs::remove_file(&profile_path).map_err(|e| Error::Filesystem(e))?;
@@ -337,7 +365,7 @@ pub async fn sideload_app(
 
     logger.log("Installing app (Transfer)... 0%");
 
-    let res = install_app(&device, &app.bundle.bundle_dir, |percentage| {
+    let res = install_app(device_provider, &app.bundle.bundle_dir, |percentage| {
         logger.log(&format!("Installing app... {}%", percentage));
     })
     .await;
@@ -349,10 +377,11 @@ pub async fn sideload_app(
 }
 
 pub async fn ensure_device_registered(
-    logger: &impl SideloadLogger,
+    logger: &Box<dyn SideloadLogger>,
     dev_session: &DeveloperSession,
     team: &DeveloperTeam,
-    device: &DeviceInfo,
+    uuid: &str,
+    name: &str,
 ) -> Result<(), Error> {
     let devices = dev_session
         .list_devices(DeveloperDeviceType::Ios, team)
@@ -361,11 +390,11 @@ pub async fn ensure_device_registered(
         return error_and_return(logger, e);
     }
     let devices = devices.unwrap();
-    if !devices.iter().any(|d| d.device_number == device.uuid) {
+    if !devices.iter().any(|d| d.device_number == uuid) {
         logger.log("Device not found in your account");
         // TODO: Actually test!
         dev_session
-            .add_device(DeveloperDeviceType::Ios, team, &device.name, &device.uuid)
+            .add_device(DeveloperDeviceType::Ios, team, name, uuid)
             .await?;
         logger.log("Successfully added device to your account");
     }

@@ -1,7 +1,8 @@
 use std::{env, path::PathBuf, sync::Arc};
 
+use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
-    AnisetteConfiguration, AppleAccount, DefaultLogger, DeveloperSession, device::list_devices,
+    AnisetteConfiguration, AppleAccount, DeveloperSession, SideloadConfiguration,
     sideload::sideload_app,
 };
 
@@ -17,11 +18,23 @@ async fn main() {
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(3).expect("Please provide the Apple ID password");
 
-    // You don't have to use the builtin list_devices method if you don't want to use usbmuxd
-    // You can use idevice to get the device info however you want
-    // This is just easier
-    let device = list_devices().await.unwrap().into_iter().next().unwrap();
-    println!("Target device: {}", device.name);
+    // You don't have to use usbmuxd, you can use any IdeviceProvider
+    let usbmuxd = UsbmuxdConnection::default().await;
+    if usbmuxd.is_err() {
+        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
+    }
+    let mut usbmuxd = usbmuxd.unwrap();
+
+    let devs = usbmuxd.get_devices().await.unwrap();
+    if devs.is_empty() {
+        panic!("No devices found");
+    }
+
+    let provider = devs
+        .iter()
+        .next()
+        .unwrap()
+        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
     // Change the anisette url and such here
     // Note that right now only remote anisette servers are supported
@@ -44,11 +57,10 @@ async fn main() {
 
     let dev_session = DeveloperSession::new(Arc::new(account));
 
-    // This is where certificates, mobileprovision, and anisette data will be stored
-    let store_dir = std::env::current_dir().unwrap();
+    // You can change the machine name, store directory (for certs, anisette data, & provision files), and logger
+    let config = SideloadConfiguration::default().set_machine_name("isideload-demo".to_string());
 
-    // DefaultLogger just prints to the stdout/stderr, but you can provide your own implementation
-    sideload_app(DefaultLogger {}, &dev_session, &device, app_path, store_dir)
+    sideload_app(&provider, &dev_session, app_path, config)
         .await
         .unwrap()
 }

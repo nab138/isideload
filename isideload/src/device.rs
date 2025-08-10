@@ -1,89 +1,19 @@
 use idevice::{
-    IdeviceService,
-    afc::AfcClient,
-    installation_proxy::InstallationProxyClient,
-    lockdown::LockdownClient,
-    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
+    IdeviceService, afc::AfcClient, installation_proxy::InstallationProxyClient,
+    provider::IdeviceProvider,
 };
-use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::{future::Future, path::Path};
 
 use crate::Error;
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct DeviceInfo {
-    pub name: String,
-    pub id: u32,
-    pub uuid: String,
-}
-
-pub async fn list_devices() -> Result<Vec<DeviceInfo>, String> {
-    let usbmuxd = UsbmuxdConnection::default().await;
-    if usbmuxd.is_err() {
-        eprintln!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
-        return Err("Failed to connect to usbmuxd".to_string());
-    }
-    let mut usbmuxd = usbmuxd.unwrap();
-
-    let devs = usbmuxd.get_devices().await.unwrap();
-    if devs.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let device_info_futures: Vec<_> = devs
-        .iter()
-        .map(|d| async move {
-            let provider = d.to_provider(UsbmuxdAddr::from_env_var().unwrap(), "y-code");
-            let device_uid = d.device_id;
-
-            let mut lockdown_client = match LockdownClient::connect(&provider).await {
-                Ok(l) => l,
-                Err(e) => {
-                    eprintln!("Unable to connect to lockdown: {e:?}");
-                    return DeviceInfo {
-                        name: String::from("Unknown Device"),
-                        id: device_uid,
-                        uuid: d.udid.clone(),
-                    };
-                }
-            };
-
-            let device_name = lockdown_client
-                .get_value("DeviceName", None)
-                .await
-                .expect("Failed to get device name")
-                .as_string()
-                .expect("Failed to convert device name to string")
-                .to_string();
-
-            DeviceInfo {
-                name: device_name,
-                id: device_uid,
-                uuid: d.udid.clone(),
-            }
-        })
-        .collect();
-
-    Ok(futures::future::join_all(device_info_futures).await)
-}
-
+/// Installs an ***already signed*** app onto your device.
 pub async fn install_app(
-    device: &DeviceInfo,
+    provider: &impl IdeviceProvider,
     app_path: &Path,
-    callback: impl Fn(u64) -> (),
+    progress_callback: impl Fn(u64) -> (),
 ) -> Result<(), Error> {
-    let mut usbmuxd = UsbmuxdConnection::default()
-        .await
-        .map_err(|e| Error::IdeviceError(e))?;
-    let device = usbmuxd
-        .get_device(&device.uuid)
-        .await
-        .map_err(|e| Error::IdeviceError(e))?;
-
-    let provider = device.to_provider(UsbmuxdAddr::from_env_var().unwrap(), "y-code");
-
-    let mut afc_client = AfcClient::connect(&provider)
+    let mut afc_client = AfcClient::connect(provider)
         .await
         .map_err(|e| Error::IdeviceError(e))?;
 
@@ -93,7 +23,7 @@ pub async fn install_app(
     );
     afc_upload_dir(&mut afc_client, app_path, &dir).await?;
 
-    let mut instproxy_client = InstallationProxyClient::connect(&provider)
+    let mut instproxy_client = InstallationProxyClient::connect(provider)
         .await
         .map_err(|e| Error::IdeviceError(e))?;
 
@@ -104,7 +34,7 @@ pub async fn install_app(
             dir,
             Some(plist::Value::Dictionary(options)),
             async |(percentage, _)| {
-                callback(percentage);
+                progress_callback(percentage);
             },
             (),
         )

@@ -39,7 +39,7 @@ pub enum Error {
     ZSignError(#[from] ZSignError),
 }
 
-pub trait SideloadLogger {
+pub trait SideloadLogger: Send + Sync {
     fn log(&self, message: &str);
     fn error(&self, error: &Error);
 }
@@ -53,5 +53,46 @@ impl SideloadLogger for DefaultLogger {
 
     fn error(&self, error: &Error) {
         eprintln!("Error: {}", error);
+    }
+}
+
+/// Sideload configuration options.
+pub struct SideloadConfiguration {
+    /// An arbitrary machine name to appear on the certificate (e.x. "YCode")
+    pub machine_name: String,
+    /// Logger for reporting progress and errors
+    pub logger: Box<dyn SideloadLogger>,
+    /// Directory used to store intermediate artifacts (profiles, certs, etc.). This directory will not be cleared at the end.
+    pub store_dir: std::path::PathBuf,
+}
+
+impl Default for SideloadConfiguration {
+    fn default() -> Self {
+        SideloadConfiguration::new()
+    }
+}
+
+impl SideloadConfiguration {
+    pub fn new() -> Self {
+        SideloadConfiguration {
+            machine_name: "isideload".to_string(),
+            logger: Box::new(DefaultLogger),
+            store_dir: std::env::current_dir().unwrap(),
+        }
+    }
+
+    pub fn set_machine_name(mut self, machine_name: String) -> Self {
+        self.machine_name = machine_name;
+        self
+    }
+
+    pub fn set_logger(mut self, logger: Box<dyn SideloadLogger>) -> Self {
+        self.logger = logger;
+        self
+    }
+
+    pub fn set_store_dir(mut self, store_dir: std::path::PathBuf) -> Self {
+        self.store_dir = store_dir;
+        self
     }
 }

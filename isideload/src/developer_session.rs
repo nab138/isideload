@@ -297,6 +297,7 @@ impl DeveloperSession {
         device_type: DeveloperDeviceType,
         team: &DeveloperTeam,
         csr_content: String,
+        machine_name: String,
     ) -> Result<String, Error> {
         let url = dev_url(device_type, "submitDevelopmentCSR");
         let mut body = Dictionary::new();
@@ -306,10 +307,7 @@ impl DeveloperSession {
             "machineId".to_string(),
             Value::String(uuid::Uuid::new_v4().to_string().to_uppercase()),
         );
-        body.insert(
-            "machineName".to_string(),
-            Value::String("YCode".to_string()),
-        );
+        body.insert("machineName".to_string(), Value::String(machine_name));
 
         let response = self.send_developer_request(&url, Some(body)).await?;
         let cert_dict = response

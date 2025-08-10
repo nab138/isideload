@@ -22,6 +22,7 @@ pub struct CertificateIdentity {
     pub private_key: PKey<Private>,
     pub key_file: PathBuf,
     pub cert_file: PathBuf,
+    pub machine_name: String,
 }
 
 impl CertificateIdentity {
@@ -29,6 +30,7 @@ impl CertificateIdentity {
         configuration_path: &Path,
         dev_session: &DeveloperSession,
         apple_id: String,
+        machine_name: String,
     ) -> Result<Self, Error> {
         let mut hasher = Sha1::new();
         hasher.update(apple_id.as_bytes());
@@ -64,6 +66,7 @@ impl CertificateIdentity {
             private_key,
             key_file,
             cert_file,
+            machine_name,
         };
 
         if let Ok(cert) = cert_identity
@@ -103,7 +106,7 @@ impl CertificateIdentity {
 
         for cert in certificates
             .iter()
-            .filter(|c| c.machine_name == "YCode".to_string())
+            .filter(|c| c.machine_name == self.machine_name)
         {
             if let Ok(x509_cert) = X509::from_der(&cert.cert_content) {
                 if let Ok(cert_public_key) = x509_cert.public_key() {
@@ -166,6 +169,7 @@ impl CertificateIdentity {
                 DeveloperDeviceType::Ios,
                 team,
                 String::from_utf8_lossy(&csr_pem).to_string(),
+                self.machine_name.clone(),
             )
             .await
             .map_err(|e| {
