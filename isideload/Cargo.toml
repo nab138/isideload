@@ -6,7 +6,7 @@ authors = ["Nicholas Sharp <nab@nabdev.me>"]
 version = "0.1.0"
 edition = "2024"
 repository = "https://github.com/nab138/isideload"
-readme = "README.md"
+documentation = "https://docs.rs/isideload"
 keywords = ["ios", "sideload"]
 
 [features]
