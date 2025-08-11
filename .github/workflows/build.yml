@@ -41,4 +41,4 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build
-        run: cargo build --features "vendored-openssl,vendored-botan"
+        run: cargo build --features "vendored-openssl vendored-botan"
