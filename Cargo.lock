@@ -1170,7 +1170,7 @@ checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
 name = "isideload"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "futures",
  "hex",
@@ -3242,9 +3242,9 @@ dependencies = [
 
 [[package]]
 name = "zsign-rust"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15da1f095223a57b1a26b2570594dee7114142c4973dbb58760d6e8fbb970127"
+checksum = "4e6f7303e79779f24807ebb43de1816334c6bbbfb1982785d21189bc1cb47f79"
 dependencies = [
  "bindgen 0.72.0",
  "cc",
