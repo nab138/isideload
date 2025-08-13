@@ -40,6 +40,13 @@ pub async fn sideload_app(
         }
     };
 
+    if let Ok(pairing_file) = device_provider.get_pairing_file().await {
+        lockdown_client
+            .start_session(&pairing_file)
+            .await
+            .map_err(|e| Error::IdeviceError(e))?;
+    }
+
     let device_name = lockdown_client
         .get_value("DeviceName", None)
         .await
