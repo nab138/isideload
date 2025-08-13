@@ -342,7 +342,7 @@ pub async fn sideload_app(
     // Without this, zsign complains it can't find the provision file
     #[cfg(target_os = "windows")]
     {
-        file.sync_all().map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| Error::Filesystem(e))?;
         drop(file);
     }
 
