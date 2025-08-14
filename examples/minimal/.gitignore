@@ -1,0 +1,5 @@
+.zsign_cache
+keys
+*.ipa
+state.plist
+*.mobileprovision

@@ -165,15 +165,17 @@ pub async fn sideload_app(
         })
         .collect::<Vec<_>>();
 
-    if app_ids_to_register.len() > list_app_id_response.available_quantity.try_into().unwrap() {
-        return error_and_return(
-            &logger,
-            Error::InvalidBundle(format!(
-                "This app requires {} app ids, but you only have {} available",
-                app_ids_to_register.len(),
-                list_app_id_response.available_quantity
-            )),
-        );
+    if let Some(available) = list_app_id_response.available_quantity {
+        if app_ids_to_register.len() > available.try_into().unwrap() {
+            return error_and_return(
+                &logger,
+                Error::InvalidBundle(format!(
+                    "This app requires {} app ids, but you only have {} available",
+                    app_ids_to_register.len(),
+                    available
+                )),
+            );
+        }
     }
 
     for bundle in app_ids_to_register {

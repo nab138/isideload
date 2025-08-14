@@ -382,14 +382,27 @@ impl DeveloperSession {
             });
         }
 
-        let max_quantity = response
-            .get("maxQuantity")
-            .and_then(|v| v.as_unsigned_integer())
-            .ok_or(Error::Parse("maxQuantity".to_string()))?;
-        let available_quantity = response
-            .get("availableQuantity")
-            .and_then(|v| v.as_unsigned_integer())
-            .ok_or(Error::Parse("availableQuantity".to_string()))?;
+        let max_quantity = if response.contains_key("maxQuantity") {
+            Some(
+                response
+                    .get("maxQuantity")
+                    .and_then(|v| v.as_unsigned_integer())
+                    .ok_or(Error::Parse("maxQuantity".to_string()))?,
+            )
+        } else {
+            None
+        };
+
+        let available_quantity = if response.contains_key("availableQuantity") {
+            Some(
+                response
+                    .get("availableQuantity")
+                    .and_then(|v| v.as_unsigned_integer())
+                    .ok_or(Error::Parse("availableQuantity".to_string()))?,
+            )
+        } else {
+            None
+        };
 
         Ok(ListAppIdsResponse {
             app_ids: result,
@@ -687,8 +700,8 @@ pub struct AppId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListAppIdsResponse {
     pub app_ids: Vec<AppId>,
-    pub max_quantity: u64,
-    pub available_quantity: u64,
+    pub max_quantity: Option<u64>,
+    pub available_quantity: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
