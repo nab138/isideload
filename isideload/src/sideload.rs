@@ -48,7 +48,7 @@ pub async fn sideload_app(
     }
 
     let device_name = lockdown_client
-        .get_value("DeviceName", None)
+        .get_value(Some("DeviceName"), None)
         .await
         .map_err(|e| Error::IdeviceError(e))?
         .as_string()
@@ -58,7 +58,7 @@ pub async fn sideload_app(
         .to_string();
 
     let device_uuid = lockdown_client
-        .get_value("UniqueDeviceID", None)
+        .get_value(Some("UniqueDeviceID"), None)
         .await
         .map_err(|e| Error::IdeviceError(e))?
         .as_string()
