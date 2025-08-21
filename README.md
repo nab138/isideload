@@ -2,7 +2,7 @@
 
 [![Build isideload](https://github.com/nab138/isideload/actions/workflows/build.yml/badge.svg)](https://github.com/nab138/isideload/actions/workflows/build.yml)
 
-A Rust library for sideloading iOS applications. Designed for use in [YCode](https://github.com/nab138/YCode).
+A Rust library for sideloading iOS applications. Designed for use in [CrossCode](https://github.com/nab138/CrossCode).
 
 ## Disclaimer
 
