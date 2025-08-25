@@ -4,6 +4,8 @@
 
 A Rust library for sideloading iOS applications. Designed for use in [CrossCode](https://github.com/nab138/CrossCode).
 
+This also serves as a rust library for accessing Apple's private developer APIs. See [`developer_session.rs`](isideload/src/developer_session.rs) for details.
+
 ## Disclaimer
 
 This package uses private Apple Developer APIs. Use at your own risk.
@@ -15,8 +17,8 @@ To use isideload, add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
 # Make sure to use the latest version
-isideload = { version = "0.1.6", features = ["vendored-openssl", "vendored-botan" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL and Botan installed on your system.
-idevice = { version = "0.1.37", features = ["usbmuxd"]} # Used to give isideload an IdeviceProvider. You don't need to use usbmuxd. For more info see https://github.com/jkcoxson/idevice
+isideload = { version = "0.1.7", features = ["vendored-openssl", "vendored-botan" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL and Botan installed on your system.
+idevice = { version = "0.1.40", features = ["usbmuxd"]} # Used to give isideload an IdeviceProvider. You don't need to use usbmuxd. For more info see https://github.com/jkcoxson/idevice
 ```
 
 Then, you can use it like so:
