@@ -17,7 +17,7 @@ To use isideload, add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
 # Make sure to use the latest version
-isideload = { version = "0.1.7", features = ["vendored-openssl", "vendored-botan" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL and Botan installed on your system.
+isideload = { version = "0.1.8", features = ["vendored-openssl", "vendored-botan" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL and Botan installed on your system.
 idevice = { version = "0.1.40", features = ["usbmuxd"]} # Used to give isideload an IdeviceProvider. You don't need to use usbmuxd. For more info see https://github.com/jkcoxson/idevice
 ```
 
