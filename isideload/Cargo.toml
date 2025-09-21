@@ -23,7 +23,7 @@ uuid = { version = "1.17.0", features = ["v4"] }
 zip = { version = "4.3", default-features = false, features = ["deflate"] }
 hex = "0.4"
 sha1 = "0.10"
-idevice = { version = "0.1.42", features = ["afc", "installation_proxy", "debug_proxy", "rsd", "tunnel_tcp_stack"] }
+idevice = { version = "0.1.42", features = ["afc", "installation_proxy", "debug_proxy", "rsd", "tunnel_tcp_stack", "heartbeat"] }
 openssl = "0.10"
 zsign-rust = "0.1.6"
 thiserror = "2"
