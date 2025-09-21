@@ -6,5 +6,5 @@ publish = false
 
 [dependencies]
 isideload = { path = "../../isideload", features = ["vendored-openssl", "vendored-botan"] }
-idevice = { version = "0.1.37", features = ["usbmuxd"]}
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+idevice = { version = "0.1.42", features = ["usbmuxd"]}
+tokio = { version = "1.43", features = ["macros", "rt-multi-thread"] }
