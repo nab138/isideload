@@ -355,8 +355,10 @@ pub async fn sideload_app(
         drop(file);
     }
 
-    // TODO: Recursive for sub-bundles?
     app.bundle.write_info()?;
+    for ext in app.bundle.app_extensions_mut() {
+        ext.write_info()?;
+    }
 
     match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
         .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
