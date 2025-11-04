@@ -24,7 +24,8 @@ impl Application {
 
         if path.is_file() {
             let temp_dir = std::env::temp_dir();
-            let temp_path = temp_dir.join(path.file_name().unwrap());
+            let temp_path = temp_dir
+                .join(path.file_name().unwrap().to_string_lossy().to_string() + "_extracted");
             if temp_path.exists() {
                 std::fs::remove_dir_all(&temp_path).map_err(|e| Error::Filesystem(e))?;
             }
