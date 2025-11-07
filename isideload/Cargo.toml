@@ -13,12 +13,12 @@ readme = "../README.md"
 [features]
 default = []
 vendored-openssl = ["openssl/vendored", "zsign-rust/vendored-openssl"]
-vendored-botan = ["icloud_auth/vendored-botan"]
+vendored-botan = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 plist = { version = "1.7" }
-icloud_auth = { version = "0.1.4", package = "nab138_icloud_auth" }
+icloud_auth = { version = "0.1.4", package = "nab138_icloud_auth", path = "/home/nicholas/Documents/coding/sidestore-apple-private-apis/icloud-auth" }
 uuid = { version = "1.17.0", features = ["v4"] }
 zip = { version = "4.3", default-features = false, features = ["deflate"] }
 hex = "0.4"
