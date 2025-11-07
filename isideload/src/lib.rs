@@ -61,6 +61,8 @@ pub struct SideloadConfiguration {
     pub logger: Box<dyn SideloadLogger>,
     /// Directory used to store intermediate artifacts (profiles, certs, etc.). This directory will not be cleared at the end.
     pub store_dir: std::path::PathBuf,
+    /// Whether or not to revoke the certificate immediately after installation
+    pub revoke_cert: bool,
 }
 
 impl Default for SideloadConfiguration {
@@ -75,6 +77,7 @@ impl SideloadConfiguration {
             machine_name: "isideload".to_string(),
             logger: Box::new(DefaultLogger),
             store_dir: std::env::current_dir().unwrap(),
+            revoke_cert: false,
         }
     }
 
@@ -90,6 +93,11 @@ impl SideloadConfiguration {
 
     pub fn set_store_dir(mut self, store_dir: std::path::PathBuf) -> Self {
         self.store_dir = store_dir;
+        self
+    }
+
+    pub fn set_revoke_cert(mut self, revoke_cert: bool) -> Self {
+        self.revoke_cert = revoke_cert;
         self
     }
 }
