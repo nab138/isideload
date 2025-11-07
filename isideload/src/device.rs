@@ -80,7 +80,11 @@ fn afc_upload_dir<'a>(
                     .map_err(|e| Error::IdeviceError(e))?;
                 let bytes = std::fs::read(&path).map_err(|e| Error::Filesystem(e))?;
                 file_handle
-                    .write(&bytes)
+                    .write_entire(&bytes)
+                    .await
+                    .map_err(|e| Error::IdeviceError(e))?;
+                file_handle
+                    .close()
                     .await
                     .map_err(|e| Error::IdeviceError(e))?;
             }
