@@ -12,11 +12,11 @@ use crate::Error;
 pub async fn install_app(
     provider: &impl IdeviceProvider,
     app_path: &Path,
-    progress_callback: impl Fn(u64) -> (),
+    progress_callback: impl Fn(u64),
 ) -> Result<(), Error> {
     let mut afc_client = AfcClient::connect(provider)
         .await
-        .map_err(|e| Error::IdeviceError(e))?;
+        .map_err(Error::IdeviceError)?;
 
     let dir = format!(
         "PublicStaging/{}",
@@ -26,7 +26,7 @@ pub async fn install_app(
 
     let mut instproxy_client = InstallationProxyClient::connect(provider)
         .await
-        .map_err(|e| Error::IdeviceError(e))?;
+        .map_err(Error::IdeviceError)?;
 
     let mut options = plist::Dictionary::new();
     options.insert("PackageType".to_string(), "Developer".into());
@@ -40,7 +40,7 @@ pub async fn install_app(
             (),
         )
         .await
-        .map_err(|e| Error::IdeviceError(e))?;
+        .map_err(Error::IdeviceError)?;
 
     Ok(())
 }
@@ -51,13 +51,13 @@ fn afc_upload_dir<'a>(
     afc_path: &'a str,
 ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
     Box::pin(async move {
-        let entries = std::fs::read_dir(path).map_err(|e| Error::Filesystem(e))?;
+        let entries = std::fs::read_dir(path).map_err(Error::Filesystem)?;
         afc_client
             .mk_dir(afc_path)
             .await
-            .map_err(|e| Error::IdeviceError(e))?;
+            .map_err(Error::IdeviceError)?;
         for entry in entries {
-            let entry = entry.map_err(|e| Error::Filesystem(e))?;
+            let entry = entry.map_err(Error::Filesystem)?;
             let path = entry.path();
             if path.is_dir() {
                 let new_afc_path = format!(
@@ -77,16 +77,16 @@ fn afc_upload_dir<'a>(
                         idevice::afc::opcode::AfcFopenMode::WrOnly,
                     )
                     .await
-                    .map_err(|e| Error::IdeviceError(e))?;
-                let bytes = std::fs::read(&path).map_err(|e| Error::Filesystem(e))?;
+                    .map_err(Error::IdeviceError)?;
+                let bytes = std::fs::read(&path).map_err(Error::Filesystem)?;
                 file_handle
                     .write_entire(&bytes)
                     .await
-                    .map_err(|e| Error::IdeviceError(e))?;
+                    .map_err(Error::IdeviceError)?;
                 file_handle
                     .close()
                     .await
-                    .map_err(|e| Error::IdeviceError(e))?;
+                    .map_err(Error::IdeviceError)?;
             }
         }
         Ok(())

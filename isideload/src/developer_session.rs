@@ -264,10 +264,10 @@ impl DeveloperSession {
                 .to_vec();
 
             result.push(DevelopmentCertificate {
-                name: name,
+                name,
                 certificate_id,
-                serial_number: serial_number,
-                machine_name: machine_name,
+                serial_number,
+                machine_name,
                 cert_content,
             });
         }

@@ -27,11 +27,11 @@ impl Application {
             let temp_path = temp_dir
                 .join(path.file_name().unwrap().to_string_lossy().to_string() + "_extracted");
             if temp_path.exists() {
-                std::fs::remove_dir_all(&temp_path).map_err(|e| Error::Filesystem(e))?;
+                std::fs::remove_dir_all(&temp_path).map_err(Error::Filesystem)?;
             }
-            std::fs::create_dir_all(&temp_path).map_err(|e| Error::Filesystem(e))?;
+            std::fs::create_dir_all(&temp_path).map_err(Error::Filesystem)?;
 
-            let file = File::open(&path).map_err(|e| Error::Filesystem(e))?;
+            let file = File::open(&path).map_err(Error::Filesystem)?;
             let mut archive = ZipArchive::new(file).map_err(|e| {
                 Error::Generic(format!("Failed to open application archive: {}", e))
             })?;
@@ -47,7 +47,7 @@ impl Application {
                     })?
                     .filter_map(Result::ok)
                     .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-                    .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "app"))
+                    .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "app"))
                     .collect();
                 if app_dirs.len() == 1 {
                     bundle_path = app_dirs[0].path();

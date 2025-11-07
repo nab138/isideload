@@ -14,7 +14,7 @@ use crate::{
 };
 use std::{io::Write, path::PathBuf};
 
-fn error_and_return(logger: &Box<dyn SideloadLogger>, error: Error) -> Result<(), Error> {
+fn error_and_return(logger: &dyn SideloadLogger, error: Error) -> Result<(), Error> {
     logger.error(&error);
     Err(error)
 }
@@ -30,13 +30,13 @@ pub async fn sideload_app(
     device_provider: &impl IdeviceProvider,
     dev_session: &DeveloperSession,
     app_path: PathBuf,
-    config: SideloadConfiguration,
+    config: SideloadConfiguration<'_>,
 ) -> Result<(), Error> {
     let logger = config.logger;
     let mut lockdown_client = match LockdownClient::connect(device_provider).await {
         Ok(l) => l,
         Err(e) => {
-            return error_and_return(&logger, Error::IdeviceError(e));
+            return error_and_return(logger, Error::IdeviceError(e));
         }
     };
 
@@ -44,13 +44,13 @@ pub async fn sideload_app(
         lockdown_client
             .start_session(&pairing_file)
             .await
-            .map_err(|e| Error::IdeviceError(e))?;
+            .map_err(Error::IdeviceError)?;
     }
 
     let device_name = lockdown_client
         .get_value(Some("DeviceName"), None)
         .await
-        .map_err(|e| Error::IdeviceError(e))?
+        .map_err(Error::IdeviceError)?
         .as_string()
         .ok_or(Error::Generic(
             "Failed to convert DeviceName to string".to_string(),
@@ -60,7 +60,7 @@ pub async fn sideload_app(
     let device_uuid = lockdown_client
         .get_value(Some("UniqueDeviceID"), None)
         .await
-        .map_err(|e| Error::IdeviceError(e))?
+        .map_err(Error::IdeviceError)?
         .as_string()
         .ok_or(Error::Generic(
             "Failed to convert UniqueDeviceID to string".to_string(),
@@ -70,17 +70,17 @@ pub async fn sideload_app(
     let team = match dev_session.get_team().await {
         Ok(t) => t,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
     logger.log("Successfully retrieved team");
 
-    ensure_device_registered(&logger, dev_session, &team, &device_uuid, &device_name).await?;
+    ensure_device_registered(logger, dev_session, &team, &device_uuid, &device_name).await?;
 
     let cert = match CertificateIdentity::new(
         &config.store_dir,
-        &dev_session,
+        dev_session,
         dev_session.account.apple_id.clone(),
         config.machine_name,
     )
@@ -88,7 +88,7 @@ pub async fn sideload_app(
     {
         Ok(c) => c,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
@@ -100,7 +100,7 @@ pub async fn sideload_app(
     {
         Ok(ids) => ids,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
@@ -110,7 +110,7 @@ pub async fn sideload_app(
         Some(id) => id.to_string(),
         None => {
             return error_and_return(
-                &logger,
+                logger,
                 Error::InvalidBundle("No bundle identifier found in IPA".to_string()),
             );
         }
@@ -120,7 +120,7 @@ pub async fn sideload_app(
         Some(name) => name.to_string(),
         None => {
             return error_and_return(
-                &logger,
+                logger,
                 Error::InvalidBundle("No bundle name found in IPA".to_string()),
             );
         }
@@ -132,7 +132,7 @@ pub async fn sideload_app(
         if let Some(id) = ext.bundle_identifier() {
             if !(id.starts_with(&main_app_bundle_id) && id.len() > main_app_bundle_id.len()) {
                 return error_and_return(
-                    &logger,
+                    logger,
                     Error::InvalidBundle(format!(
                         "Extension {} is not part of the main app bundle identifier: {}",
                         ext.bundle_name().unwrap_or("Unknown"),
@@ -150,7 +150,7 @@ pub async fn sideload_app(
     }
     app.bundle.set_bundle_identifier(&main_app_id_str);
 
-    let extension_refs: Vec<_> = app.bundle.app_extensions().into_iter().collect();
+    let extension_refs: Vec<_> = app.bundle.app_extensions().iter().collect();
     let mut bundles_with_app_id = vec![&app.bundle];
     bundles_with_app_id.extend(extension_refs);
 
@@ -165,27 +165,27 @@ pub async fn sideload_app(
         })
         .collect::<Vec<_>>();
 
-    if let Some(available) = list_app_id_response.available_quantity {
-        if app_ids_to_register.len() > available.try_into().unwrap() {
-            return error_and_return(
-                &logger,
-                Error::InvalidBundle(format!(
-                    "This app requires {} app ids, but you only have {} available",
-                    app_ids_to_register.len(),
-                    available
-                )),
-            );
-        }
+    if let Some(available) = list_app_id_response.available_quantity
+        && app_ids_to_register.len() > available.try_into().unwrap()
+    {
+        return error_and_return(
+            logger,
+            Error::InvalidBundle(format!(
+                "This app requires {} app ids, but you only have {} available",
+                app_ids_to_register.len(),
+                available
+            )),
+        );
     }
 
     for bundle in app_ids_to_register {
         let id = bundle.bundle_identifier().unwrap_or("");
         let name = bundle.bundle_name().unwrap_or("");
         if let Err(e) = dev_session
-            .add_app_id(DeveloperDeviceType::Ios, &team, &name, &id)
+            .add_app_id(DeveloperDeviceType::Ios, &team, name, id)
             .await
         {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     }
     list_app_id_response = match dev_session
@@ -194,7 +194,7 @@ pub async fn sideload_app(
     {
         Ok(ids) => ids,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
@@ -215,7 +215,7 @@ pub async fn sideload_app(
         Some(id) => id,
         None => {
             return error_and_return(
-                &logger,
+                logger,
                 Error::Generic(format!(
                     "Main app ID {} not found in registered app IDs",
                     main_app_id_str
@@ -240,12 +240,12 @@ pub async fn sideload_app(
             let mut body = plist::Dictionary::new();
             body.insert("APG3427HIY".to_string(), plist::Value::Boolean(true));
             let new_features = match dev_session
-                .update_app_id(DeveloperDeviceType::Ios, &team, &app_id, &body)
+                .update_app_id(DeveloperDeviceType::Ios, &team, app_id, &body)
                 .await
             {
                 Ok(new_feats) => new_feats,
                 Err(e) => {
-                    return error_and_return(&logger, e);
+                    return error_and_return(logger, e);
                 }
             };
             app_id.features = new_features;
@@ -267,7 +267,7 @@ pub async fn sideload_app(
     {
         Ok(groups) => groups,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
@@ -288,7 +288,7 @@ pub async fn sideload_app(
         {
             Ok(group) => group,
             Err(e) => {
-                return error_and_return(&logger, e);
+                return error_and_return(logger, e);
             }
         }
     } else {
@@ -306,7 +306,7 @@ pub async fn sideload_app(
             )
             .await;
         if assign_res.is_err() {
-            return error_and_return(&logger, assign_res.err().unwrap());
+            return error_and_return(logger, assign_res.err().unwrap());
         }
         // let provisioning_profile = match account
         //     // This doesn't seem right to me, but it's what Sideloader does... Shouldn't it be downloading the provisioning profile for this app ID, not the main?
@@ -332,7 +332,7 @@ pub async fn sideload_app(
     {
         Ok(pp /* tee hee */) => pp,
         Err(e) => {
-            return error_and_return(&logger, e);
+            return error_and_return(logger, e);
         }
     };
 
@@ -341,12 +341,12 @@ pub async fn sideload_app(
         .join(format!("{}.mobileprovision", main_app_id_str));
 
     if profile_path.exists() {
-        std::fs::remove_file(&profile_path).map_err(|e| Error::Filesystem(e))?;
+        std::fs::remove_file(&profile_path).map_err(Error::Filesystem)?;
     }
 
-    let mut file = std::fs::File::create(&profile_path).map_err(|e| Error::Filesystem(e))?;
+    let mut file = std::fs::File::create(&profile_path).map_err(Error::Filesystem)?;
     file.write_all(&provisioning_profile.encoded_profile)
-        .map_err(|e| Error::Filesystem(e))?;
+        .map_err(Error::Filesystem)?;
 
     // Without this, zsign complains it can't find the provision file
     #[cfg(target_os = "windows")]
@@ -368,7 +368,7 @@ pub async fn sideload_app(
     {
         Ok(_) => {}
         Err(e) => {
-            return error_and_return(&logger, Error::ZSignError(e));
+            return error_and_return(logger, Error::ZSignError(e));
         }
     };
 
@@ -381,7 +381,7 @@ pub async fn sideload_app(
     })
     .await;
     if let Err(e) = res {
-        return error_and_return(&logger, e);
+        return error_and_return(logger, e);
     }
 
     if config.revoke_cert {
@@ -412,7 +412,7 @@ pub async fn sideload_app(
             logger.log("Certificate revoked");
         } else {
             return error_and_return(
-                &logger,
+                logger,
                 Error::Certificate("No certificate to revoke".to_string()),
             );
         }
@@ -422,7 +422,7 @@ pub async fn sideload_app(
 }
 
 pub async fn ensure_device_registered(
-    logger: &Box<dyn SideloadLogger>,
+    logger: &dyn SideloadLogger,
     dev_session: &DeveloperSession,
     team: &DeveloperTeam,
     uuid: &str,

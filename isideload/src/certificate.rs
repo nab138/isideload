@@ -36,7 +36,7 @@ impl CertificateIdentity {
         hasher.update(apple_id.as_bytes());
         let hash_string = hex::encode(hasher.finalize()).to_lowercase();
         let key_path = configuration_path.join("keys").join(hash_string);
-        fs::create_dir_all(&key_path).map_err(|e| Error::Filesystem(e))?;
+        fs::create_dir_all(&key_path).map_err(Error::Filesystem)?;
 
         let key_file = key_path.join("key.pem");
         let cert_file = key_path.join("cert.pem");
@@ -57,7 +57,7 @@ impl CertificateIdentity {
             let pem_data = key
                 .private_key_to_pem_pkcs8()
                 .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
-            fs::write(&key_file, pem_data).map_err(|e| Error::Filesystem(e))?;
+            fs::write(&key_file, pem_data).map_err(Error::Filesystem)?;
             key
         };
 
@@ -78,7 +78,7 @@ impl CertificateIdentity {
             let cert_pem = cert.to_pem().map_err(|e| {
                 Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
             })?;
-            fs::write(&cert_identity.cert_file, cert_pem).map_err(|e| Error::Filesystem(e))?;
+            fs::write(&cert_identity.cert_file, cert_pem).map_err(Error::Filesystem)?;
 
             return Ok(cert_identity);
         }
@@ -108,15 +108,12 @@ impl CertificateIdentity {
             .iter()
             .filter(|c| c.machine_name == self.machine_name)
         {
-            if let Ok(x509_cert) = X509::from_der(&cert.cert_content) {
-                if let Ok(cert_public_key) = x509_cert.public_key() {
-                    if let Ok(cert_public_key_der) = cert_public_key.public_key_to_der() {
-                        if cert_public_key_der == our_public_key {
+            if let Ok(x509_cert) = X509::from_der(&cert.cert_content)
+                && let Ok(cert_public_key) = x509_cert.public_key()
+                    && let Ok(cert_public_key_der) = cert_public_key.public_key_to_der()
+                        && cert_public_key_der == our_public_key {
                             return Ok(x509_cert);
                         }
-                    }
-                }
-            }
         }
         Err(Error::Certificate(
             "No matching certificate found".to_string(),
@@ -202,7 +199,7 @@ impl CertificateIdentity {
         let cert_pem = certificate.to_pem().map_err(|e| {
             Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
         })?;
-        fs::write(&self.cert_file, cert_pem).map_err(|e| Error::Filesystem(e))?;
+        fs::write(&self.cert_file, cert_pem).map_err(Error::Filesystem)?;
 
         self.certificate = Some(certificate);
 
