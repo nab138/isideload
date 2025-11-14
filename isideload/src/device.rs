@@ -83,10 +83,7 @@ fn afc_upload_dir<'a>(
                     .write_entire(&bytes)
                     .await
                     .map_err(Error::IdeviceError)?;
-                file_handle
-                    .close()
-                    .await
-                    .map_err(Error::IdeviceError)?;
+                file_handle.close().await.map_err(Error::IdeviceError)?;
             }
         }
         Ok(())

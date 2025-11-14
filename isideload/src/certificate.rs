@@ -110,10 +110,11 @@ impl CertificateIdentity {
         {
             if let Ok(x509_cert) = X509::from_der(&cert.cert_content)
                 && let Ok(cert_public_key) = x509_cert.public_key()
-                    && let Ok(cert_public_key_der) = cert_public_key.public_key_to_der()
-                        && cert_public_key_der == our_public_key {
-                            return Ok(x509_cert);
-                        }
+                && let Ok(cert_public_key_der) = cert_public_key.public_key_to_der()
+                && cert_public_key_der == our_public_key
+            {
+                return Ok(x509_cert);
+            }
         }
         Err(Error::Certificate(
             "No matching certificate found".to_string(),
@@ -212,5 +213,32 @@ impl CertificateIdentity {
 
     pub fn get_private_key_file_path(&self) -> &Path {
         &self.key_file
+    }
+
+    pub fn get_serial_number(&self) -> Result<String, Error> {
+        let cert = match &self.certificate {
+            Some(c) => c,
+            None => {
+                return Err(Error::Certificate(
+                    "No certificate available to get serial number".to_string(),
+                ));
+            }
+        };
+        let num = cert
+            .serial_number()
+            .to_bn()
+            .map_err(|e| {
+                Error::Certificate(format!("Failed to convert serial number to bn: {}", e))
+            })?
+            .to_hex_str()
+            .map_err(|e| {
+                Error::Certificate(format!(
+                    "Failed to convert serial number to hex string: {}",
+                    e
+                ))
+            })?
+            .to_string();
+
+        Ok(num.trim_start_matches("0").to_string())
     }
 }

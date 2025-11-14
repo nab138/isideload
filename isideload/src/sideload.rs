@@ -385,37 +385,10 @@ pub async fn sideload_app(
     }
 
     if config.revoke_cert {
-        if let Some(cert) = cert.certificate {
-            dev_session
-                .revoke_development_cert(
-                    DeveloperDeviceType::Ios,
-                    &team,
-                    cert.serial_number()
-                        .to_bn()
-                        .map_err(|e| {
-                            Error::Certificate(format!(
-                                "Failed to convert serial number to bn: {}",
-                                e
-                            ))
-                        })?
-                        .to_hex_str()
-                        .map_err(|e| {
-                            Error::Certificate(format!(
-                                "Failed to convert serial number to hex string: {}",
-                                e
-                            ))
-                        })?
-                        .to_string()
-                        .as_str(),
-                )
-                .await?;
-            logger.log("Certificate revoked");
-        } else {
-            return error_and_return(
-                logger,
-                Error::Certificate("No certificate to revoke".to_string()),
-            );
-        }
+        dev_session
+            .revoke_development_cert(DeveloperDeviceType::Ios, &team, &cert.get_serial_number()?)
+            .await?;
+        logger.log("Certificate revoked");
     }
 
     Ok(())

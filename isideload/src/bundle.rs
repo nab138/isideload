@@ -21,9 +21,10 @@ impl Bundle {
         let mut bundle_path = bundle_dir;
         // Remove trailing slash/backslash
         if let Some(path_str) = bundle_path.to_str()
-            && (path_str.ends_with('/') || path_str.ends_with('\\')) {
-                bundle_path = PathBuf::from(&path_str[..path_str.len() - 1]);
-            }
+            && (path_str.ends_with('/') || path_str.ends_with('\\'))
+        {
+            bundle_path = PathBuf::from(&path_str[..path_str.len() - 1]);
+        }
 
         let info_plist_path = bundle_path.join("Info.plist");
         assert_bundle(
@@ -158,13 +159,15 @@ fn find_dylibs(dir: &Path, bundle_root: &Path) -> Result<Vec<String>, Error> {
 
             if file_type.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && name.ends_with(".dylib") {
-                        // Get relative path from bundle root
-                        if let Ok(relative_path) = path.strip_prefix(bundle_root)
-                            && let Some(relative_str) = relative_path.to_str() {
-                                libraries.push(relative_str.to_string());
-                            }
+                    && name.ends_with(".dylib")
+                {
+                    // Get relative path from bundle root
+                    if let Ok(relative_path) = path.strip_prefix(bundle_root)
+                        && let Some(relative_str) = relative_path.to_str()
+                    {
+                        libraries.push(relative_str.to_string());
                     }
+                }
             } else if file_type.is_dir() {
                 collect_dylibs(&path, bundle_root, libraries)?;
             }
