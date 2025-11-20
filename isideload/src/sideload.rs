@@ -259,6 +259,24 @@ pub async fn sideload_app(
             "ALTAppGroups".to_string(),
             plist::Value::Array(vec![plist::Value::String(group_identifier.clone())]),
         );
+
+        app.bundle.app_info.insert(
+            "ALTCertificateID".to_string(),
+            plist::Value::String(cert.get_serial_number().unwrap()),
+        );
+
+        match cert.to_pkcs12(&cert.machine_id) {
+            Ok(p12_bytes) => {
+                let alt_cert_path = app.bundle.bundle_dir.join("ALTCertificate.p12");
+                if alt_cert_path.exists() {
+                    std::fs::remove_file(&alt_cert_path).map_err(Error::Filesystem)?;
+                }
+
+                let mut file = std::fs::File::create(&alt_cert_path).map_err(Error::Filesystem)?;
+                file.write_all(&p12_bytes).map_err(Error::Filesystem)?;
+            }
+            Err(e) => return error_and_return(logger, e),
+        }
     }
 
     let app_groups = match dev_session

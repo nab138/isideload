@@ -257,6 +257,11 @@ impl DeveloperSession {
                 .and_then(|v| v.as_string())
                 .unwrap_or("")
                 .to_string();
+            let machine_id = dict
+                .get("machineId")
+                .and_then(|v| v.as_string())
+                .ok_or(Error::Parse("machineId".to_string()))?
+                .to_string();
             let cert_content = dict
                 .get("certContent")
                 .and_then(|v| v.as_data())
@@ -268,6 +273,7 @@ impl DeveloperSession {
                 certificate_id,
                 serial_number,
                 machine_name,
+                machine_id,
                 cert_content,
             });
         }
@@ -685,6 +691,7 @@ pub struct DevelopmentCertificate {
     pub certificate_id: String,
     pub serial_number: String,
     pub machine_name: String,
+    pub machine_id: String,
     pub cert_content: Vec<u8>,
 }
 
