@@ -3,6 +3,7 @@
 use hex;
 use openssl::{
     hash::MessageDigest,
+    pkcs12::Pkcs12,
     pkey::{PKey, Private},
     rsa::Rsa,
     x509::{X509, X509Name, X509ReqBuilder},
@@ -23,6 +24,7 @@ pub struct CertificateIdentity {
     pub key_file: PathBuf,
     pub cert_file: PathBuf,
     pub machine_name: String,
+    pub machine_id: String,
 }
 
 impl CertificateIdentity {
@@ -67,14 +69,15 @@ impl CertificateIdentity {
             key_file,
             cert_file,
             machine_name,
+            machine_id: "".to_owned(),
         };
 
-        if let Ok(cert) = cert_identity
+        if let Ok((cert, machine_id)) = cert_identity
             .find_matching_certificate(dev_session, team)
             .await
         {
             cert_identity.certificate = Some(cert.clone());
-
+            cert_identity.machine_id = machine_id;
             let cert_pem = cert.to_pem().map_err(|e| {
                 Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
             })?;
@@ -93,7 +96,7 @@ impl CertificateIdentity {
         &self,
         dev_session: &DeveloperSession,
         team: &DeveloperTeam,
-    ) -> Result<X509, Error> {
+    ) -> Result<(X509, String), Error> {
         let certificates = dev_session
             .list_all_development_certs(DeveloperDeviceType::Ios, team)
             .await
@@ -113,7 +116,7 @@ impl CertificateIdentity {
                 && let Ok(cert_public_key_der) = cert_public_key.public_key_to_der()
                 && cert_public_key_der == our_public_key
             {
-                return Ok(x509_cert);
+                return Ok((x509_cert, cert.machine_id.clone()));
             }
         }
         Err(Error::Certificate(
@@ -203,6 +206,7 @@ impl CertificateIdentity {
         fs::write(&self.cert_file, cert_pem).map_err(Error::Filesystem)?;
 
         self.certificate = Some(certificate);
+        self.machine_id = apple_cert.machine_id.clone();
 
         Ok(())
     }
@@ -240,5 +244,30 @@ impl CertificateIdentity {
             .to_string();
 
         Ok(num.trim_start_matches("0").to_string())
+    }
+
+    pub fn to_pkcs12(&self, password: &str) -> Result<Vec<u8>, Error> {
+        let cert = match &self.certificate {
+            Some(c) => c,
+            None => {
+                return Err(Error::Certificate(
+                    "No certificate available to create PKCS#12".to_string(),
+                ));
+            }
+        };
+
+        let mut pkcs12_builder = Pkcs12::builder();
+        pkcs12_builder.pkey(&self.private_key);
+        pkcs12_builder.cert(cert);
+        pkcs12_builder.name("certificate");
+        let pkcs12 = pkcs12_builder
+            .build2(password)
+            .map_err(|e| Error::Certificate(format!("Failed to create PKCS#12 bundle: {}", e)))?;
+
+        let der_bytes = pkcs12
+            .to_der()
+            .map_err(|e| Error::Certificate(format!("Failed to encode PKCS#12 to DER: {}", e)))?;
+
+        Ok(der_bytes)
     }
 }
