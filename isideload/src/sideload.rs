@@ -255,9 +255,9 @@ pub async fn sideload_app(
     let group_identifier = format!(
         "group.{}",
         if config.force_sidestore_app_group {
-            "com.SideStore.SideStore"
+            format!("com.SideStore.SideStore.{}", team.team_id)
         } else {
-            &main_app_id_str
+            main_app_id_str.clone()
         }
     );
 

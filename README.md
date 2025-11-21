@@ -17,7 +17,7 @@ To use isideload, add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
 # Make sure to use the latest version
-isideload = { version = "0.1.20", features = ["vendored-openssl"] }# Optionally, the vendored feature can be enabled to avoid needing OpenSSL installed on your system.
+isideload = { version = "0.1.21", features = ["vendored-openssl"] }# Optionally, the vendored feature can be enabled to avoid needing OpenSSL installed on your system.
 idevice = { version = "0.1.46", features = ["usbmuxd", "ring"], default-features = false} # Reccomended to disable default features and enable ring to reduce the number of ssl stacks used
 ```
 
