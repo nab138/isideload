@@ -103,4 +103,9 @@ impl<'a> SideloadConfiguration<'a> {
         self.revoke_cert = revoke_cert;
         self
     }
+
+    pub fn set_force_sidestore_app_group(mut self, force: bool) -> Self {
+        self.force_sidestore_app_group = force;
+        self
+    }
 }
