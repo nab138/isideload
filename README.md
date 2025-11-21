@@ -2,7 +2,7 @@
 
 [![Build isideload](https://github.com/nab138/isideload/actions/workflows/build.yml/badge.svg)](https://github.com/nab138/isideload/actions/workflows/build.yml)
 
-A Rust library for sideloading iOS applications. Designed for use in [CrossCode](https://github.com/nab138/CrossCode).
+A Rust library for sideloading iOS applications using an Apple ID. Used in [CrossCode](https://github.com/nab138/CrossCode) and [iloader](https://github.com/nab138/iloader).
 
 This also serves as a rust library for accessing Apple's private developer APIs. See [`developer_session.rs`](isideload/src/developer_session.rs) for details.
 
@@ -17,8 +17,8 @@ To use isideload, add the following to your `Cargo.toml`:
 ```toml
 [dependencies]
 # Make sure to use the latest version
-isideload = { version = "0.1.8", features = ["vendored-openssl" ] } # Optionally, both vendored features can be enabled to avoid needing OpenSSL installed on your system.
-idevice = { version = "0.1.40", features = ["usbmuxd"]} # Used to give isideload an IdeviceProvider. You don't need to use usbmuxd. For more info see https://github.com/jkcoxson/idevice
+isideload = { version = "0.1.18", features = ["vendored-openssl"] }# Optionally, the vendored feature can be enabled to avoid needing OpenSSL installed on your system.
+idevice = { version = "0.1.46", features = ["usbmuxd", "ring"], default-features = false} # Reccomended to disable default features and enable ring to reduce the number of ssl stacks used
 ```
 
 Then, you can use it like so:
