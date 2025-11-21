@@ -252,7 +252,14 @@ pub async fn sideload_app(
         }
     }
 
-    let group_identifier = format!("group.{}", main_app_id_str);
+    let group_identifier = format!(
+        "group.{}",
+        if config.force_sidestore_app_group {
+            "com.SideStore.SideStore"
+        } else {
+            &main_app_id_str
+        }
+    );
 
     if is_sidestore {
         app.bundle.app_info.insert(
