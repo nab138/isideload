@@ -7,12 +7,12 @@ pub mod sideload;
 
 use std::io::Error as IOError;
 
+use apple_codesign::AppleCodesignError;
 pub use icloud_auth::{AnisetteConfiguration, AppleAccount};
 
 use developer_session::DeveloperTeam;
 use idevice::IdeviceError;
 use thiserror::Error as ThisError;
-use zsign_rust::ZSignError;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -33,7 +33,7 @@ pub enum Error {
     #[error(transparent)]
     IdeviceError(#[from] IdeviceError),
     #[error(transparent)]
-    ZSignError(#[from] ZSignError),
+    AppleCodesignError(#[from] Box<AppleCodesignError>),
 }
 
 pub trait SideloadLogger: Send + Sync {

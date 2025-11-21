@@ -1,26 +1,27 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
 use hex;
-use openssl::{
-    hash::MessageDigest,
-    pkcs12::Pkcs12,
-    pkey::{PKey, Private},
-    rsa::Rsa,
-    x509::{X509, X509Name, X509ReqBuilder},
+use rcgen::{CertificateParams, DnType, KeyPair};
+use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::{
+    RsaPrivateKey,
+    pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding},
 };
 use sha1::{Digest, Sha1};
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
+use x509_certificate::X509Certificate;
 
 use crate::Error;
 use crate::developer_session::{DeveloperDeviceType, DeveloperSession, DeveloperTeam};
 
 #[derive(Debug, Clone)]
 pub struct CertificateIdentity {
-    pub certificate: Option<X509>,
-    pub private_key: PKey<Private>,
+    pub certificate: Option<X509Certificate>,
+    pub private_key: RsaPrivateKey,
     pub key_file: PathBuf,
     pub cert_file: PathBuf,
     pub machine_name: String,
@@ -46,21 +47,22 @@ impl CertificateIdentity {
         let team = teams
             .first()
             .ok_or(Error::Certificate("No teams found".to_string()))?;
+
         let private_key = if key_file.exists() {
             let key_data = fs::read_to_string(&key_file)
                 .map_err(|e| Error::Certificate(format!("Failed to read key file: {}", e)))?;
-            PKey::private_key_from_pem(key_data.as_bytes())
+            RsaPrivateKey::from_pkcs8_pem(&key_data)
                 .map_err(|e| Error::Certificate(format!("Failed to load private key: {}", e)))?
         } else {
-            let rsa = Rsa::generate(2048)
+            let mut rng = rand::thread_rng();
+            let private_key = RsaPrivateKey::new(&mut rng, 2048)
                 .map_err(|e| Error::Certificate(format!("Failed to generate RSA key: {}", e)))?;
-            let key = PKey::from_rsa(rsa)
-                .map_err(|e| Error::Certificate(format!("Failed to create private key: {}", e)))?;
-            let pem_data = key
-                .private_key_to_pem_pkcs8()
+
+            let pem_data = private_key
+                .to_pkcs8_pem(LineEnding::LF)
                 .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
-            fs::write(&key_file, pem_data).map_err(Error::Filesystem)?;
-            key
+            fs::write(&key_file, pem_data.as_bytes()).map_err(Error::Filesystem)?;
+            private_key
         };
 
         let mut cert_identity = CertificateIdentity {
@@ -78,9 +80,10 @@ impl CertificateIdentity {
         {
             cert_identity.certificate = Some(cert.clone());
             cert_identity.machine_id = machine_id;
-            let cert_pem = cert.to_pem().map_err(|e| {
-                Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
-            })?;
+
+            let cert_pem = cert
+                .encode_pem()
+                .map_err(|e| Error::Certificate(format!("Failed to encode cert: {}", e)))?;
             fs::write(&cert_identity.cert_file, cert_pem).map_err(Error::Filesystem)?;
 
             return Ok(cert_identity);
@@ -96,27 +99,33 @@ impl CertificateIdentity {
         &self,
         dev_session: &DeveloperSession,
         team: &DeveloperTeam,
-    ) -> Result<(X509, String), Error> {
+    ) -> Result<(X509Certificate, String), Error> {
         let certificates = dev_session
             .list_all_development_certs(DeveloperDeviceType::Ios, team)
             .await
             .map_err(|e| Error::Certificate(format!("Failed to list certificates: {:?}", e)))?;
 
-        let our_public_key = self
+        let our_public_key_der = self
             .private_key
-            .public_key_to_der()
-            .map_err(|e| Error::Certificate(format!("Failed to get public key: {}", e)))?;
+            .to_public_key()
+            .to_pkcs1_der()
+            .map_err(|e| Error::Certificate(format!("Failed to get public key: {}", e)))?
+            .to_vec();
 
         for cert in certificates
             .iter()
             .filter(|c| c.machine_name == self.machine_name)
         {
-            if let Ok(x509_cert) = X509::from_der(&cert.cert_content)
-                && let Ok(cert_public_key) = x509_cert.public_key()
-                && let Ok(cert_public_key_der) = cert_public_key.public_key_to_der()
-                && cert_public_key_der == our_public_key
-            {
-                return Ok((x509_cert, cert.machine_id.clone()));
+            if let Ok(x509_cert) = X509Certificate::from_der(&cert.cert_content) {
+                let cert_public_key_der: Vec<u8> = x509_cert
+                    .tbs_certificate()
+                    .subject_public_key_info
+                    .subject_public_key
+                    .octets()
+                    .collect();
+                if cert_public_key_der == our_public_key_der {
+                    return Ok((x509_cert, cert.machine_id.clone()));
+                }
             }
         }
         Err(Error::Certificate(
@@ -129,47 +138,39 @@ impl CertificateIdentity {
         dev_session: &DeveloperSession,
         team: &DeveloperTeam,
     ) -> Result<(), Error> {
-        let mut req_builder = X509ReqBuilder::new()
-            .map_err(|e| Error::Certificate(format!("Failed to create request builder: {}", e)))?;
-        let mut name_builder = X509Name::builder()
-            .map_err(|e| Error::Certificate(format!("Failed to create name builder: {}", e)))?;
+        let mut params = CertificateParams::new(vec!["CN".to_string()])
+            .map_err(|e| Error::Certificate(format!("Failed to create params: {}", e)))?;
+        params.distinguished_name.push(DnType::CountryName, "US");
+        params
+            .distinguished_name
+            .push(DnType::StateOrProvinceName, "STATE");
+        params
+            .distinguished_name
+            .push(DnType::LocalityName, "LOCAL");
+        params
+            .distinguished_name
+            .push(DnType::OrganizationName, "ORGNIZATION");
+        params.distinguished_name.push(DnType::CommonName, "CN");
 
-        name_builder
-            .append_entry_by_text("C", "US")
-            .map_err(|e| Error::Certificate(format!("Failed to set country: {}", e)))?;
-        name_builder
-            .append_entry_by_text("ST", "STATE")
-            .map_err(|e| Error::Certificate(format!("Failed to set state: {}", e)))?;
-        name_builder
-            .append_entry_by_text("L", "LOCAL")
-            .map_err(|e| Error::Certificate(format!("Failed to set locality: {}", e)))?;
-        name_builder
-            .append_entry_by_text("O", "ORGNIZATION")
-            .map_err(|e| Error::Certificate(format!("Failed to set organization: {}", e)))?;
-        name_builder
-            .append_entry_by_text("CN", "CN")
-            .map_err(|e| Error::Certificate(format!("Failed to set common name: {}", e)))?;
+        let key_pem = self
+            .private_key
+            .to_pkcs8_pem(LineEnding::LF)
+            .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
+        let key_pair = KeyPair::from_pem(&key_pem)
+            .map_err(|e| Error::Certificate(format!("Failed to load key pair for CSR: {}", e)))?;
 
-        req_builder
-            .set_subject_name(&name_builder.build())
-            .map_err(|e| Error::Certificate(format!("Failed to set subject name: {}", e)))?;
-        req_builder
-            .set_pubkey(&self.private_key)
-            .map_err(|e| Error::Certificate(format!("Failed to set public key: {}", e)))?;
-        req_builder
-            .sign(&self.private_key, MessageDigest::sha256())
-            .map_err(|e| Error::Certificate(format!("Failed to sign request: {}", e)))?;
-
-        let csr_pem = req_builder
-            .build()
-            .to_pem()
-            .map_err(|e| Error::Certificate(format!("Failed to encode CSR: {}", e)))?;
+        let csr = params
+            .serialize_request(&key_pair)
+            .map_err(|e| Error::Certificate(format!("Failed to generate CSR: {}", e)))?;
+        let csr_pem = csr
+            .pem()
+            .map_err(|e| Error::Certificate(format!("Failed to encode CSR to PEM: {}", e)))?;
 
         let certificate_id = dev_session
             .submit_development_csr(
                 DeveloperDeviceType::Ios,
                 team,
-                String::from_utf8_lossy(&csr_pem).to_string(),
+                csr_pem,
                 self.machine_name.clone(),
             )
             .await
@@ -196,13 +197,13 @@ impl CertificateIdentity {
                 "Certificate not found after submission".to_string(),
             ))?;
 
-        let certificate = X509::from_der(&apple_cert.cert_content)
+        let certificate = X509Certificate::from_der(&apple_cert.cert_content)
             .map_err(|e| Error::Certificate(format!("Failed to parse certificate: {}", e)))?;
 
         // Write certificate to disk
-        let cert_pem = certificate.to_pem().map_err(|e| {
-            Error::Certificate(format!("Failed to encode certificate to PEM: {}", e))
-        })?;
+        let cert_pem = certificate
+            .encode_pem()
+            .map_err(|e| Error::Certificate(format!("Failed to encode cert: {}", e)))?;
         fs::write(&self.cert_file, cert_pem).map_err(Error::Filesystem)?;
 
         self.certificate = Some(certificate);
@@ -228,46 +229,33 @@ impl CertificateIdentity {
                 ));
             }
         };
-        let num = cert
-            .serial_number()
-            .to_bn()
-            .map_err(|e| {
-                Error::Certificate(format!("Failed to convert serial number to bn: {}", e))
-            })?
-            .to_hex_str()
-            .map_err(|e| {
-                Error::Certificate(format!(
-                    "Failed to convert serial number to hex string: {}",
-                    e
-                ))
-            })?
-            .to_string();
 
-        Ok(num.trim_start_matches("0").to_string())
+        let serial = &cert.tbs_certificate().serial_number;
+        let hex_str = hex::encode(serial.as_slice());
+
+        Ok(hex_str.trim_start_matches("0").to_string())
     }
 
     pub fn to_pkcs12(&self, password: &str) -> Result<Vec<u8>, Error> {
-        let cert = match &self.certificate {
-            Some(c) => c,
-            None => {
-                return Err(Error::Certificate(
-                    "No certificate available to create PKCS#12".to_string(),
-                ));
-            }
-        };
+        let output = Command::new("openssl")
+            .arg("pkcs12")
+            .arg("-export")
+            .arg("-inkey")
+            .arg(&self.key_file)
+            .arg("-in")
+            .arg(&self.cert_file)
+            .arg("-passout")
+            .arg(format!("pass:{}", password))
+            .output()
+            .map_err(|e| Error::Certificate(format!("Failed to execute openssl: {}", e)))?;
 
-        let mut pkcs12_builder = Pkcs12::builder();
-        pkcs12_builder.pkey(&self.private_key);
-        pkcs12_builder.cert(cert);
-        pkcs12_builder.name("certificate");
-        let pkcs12 = pkcs12_builder
-            .build2(password)
-            .map_err(|e| Error::Certificate(format!("Failed to create PKCS#12 bundle: {}", e)))?;
+        if !output.status.success() {
+            return Err(Error::Certificate(format!(
+                "openssl failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
 
-        let der_bytes = pkcs12
-            .to_der()
-            .map_err(|e| Error::Certificate(format!("Failed to encode PKCS#12 to DER: {}", e)))?;
-
-        Ok(der_bytes)
+        Ok(output.stdout)
     }
 }

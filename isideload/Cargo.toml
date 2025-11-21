@@ -12,7 +12,6 @@ readme = "../README.md"
 
 [features]
 default = []
-vendored-openssl = ["openssl/vendored", "zsign-rust/vendored-openssl"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -23,6 +22,12 @@ zip = { version = "4.3", default-features = false, features = ["deflate"] }
 hex = "0.4"
 sha1 = "0.10"
 idevice = { version = "0.1.46", features = ["afc", "installation_proxy", "ring"], default-features = false }
-openssl = "0.10"
-zsign-rust = "0.1.6"
 thiserror = "2"
+apple-codesign = "0.29.0"
+x509-certificate = "0.25.0"
+rsa = "0.9"
+pkcs8 = "0.10"
+rcgen = "0.13"
+p12 = "0.6"
+der = "0.7"
+rand = "0.8"

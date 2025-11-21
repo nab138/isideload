@@ -1,9 +1,10 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
+use apple_codesign::{BundleSigner, SigningSettings};
+use der::Encode;
 use idevice::IdeviceService;
 use idevice::lockdown::LockdownClient;
 use idevice::provider::IdeviceProvider;
-use zsign_rust::ZSignOptions;
 
 use crate::application::Application;
 use crate::device::install_app;
@@ -385,18 +386,32 @@ pub async fn sideload_app(
         ext.write_info()?;
     }
 
-    match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
-        .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
-        .with_pkey_file(cert.get_private_key_file_path().to_str().unwrap())
-        .with_prov_file(profile_path.to_str().unwrap())
-        .sign()
-    {
-        Ok(_) => {}
-        Err(e) => {
-            return error_and_return(logger, Error::ZSignError(e));
-        }
-    };
+    // match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
+    //     .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
+    //     .with_pkey_file(cert.get_private_key_file_path().to_str().unwrap())
+    //     .with_prov_file(profile_path.to_str().unwrap())
+    //     .sign()
+    // {
+    //     Ok(_) => {}
+    //     Err(e) => {
+    //         return error_and_return(logger, Error::ZSignError(e));
+    //     }
+    // };
 
+    let mut signer = BundleSigner::new_from_path(&app.bundle.bundle_dir)
+        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+
+    signer
+        .collect_nested_bundles()
+        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+
+    let mut settings = SigningSettings::default();
+
+    settings.set_signing_key(cert.private_key.clone(), cert.certificate.unwrap());
+
+    signer
+        .write_signed_bundle(&app.bundle.bundle_dir, &settings)
+        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
     logger.log("App signed!");
 
     logger.log("Installing app (Transfer)... 0%");
