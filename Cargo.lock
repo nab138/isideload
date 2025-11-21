@@ -981,7 +981,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
 name = "isideload"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "hex",
  "idevice",
