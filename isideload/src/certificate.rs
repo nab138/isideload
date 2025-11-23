@@ -1,8 +1,8 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
+use apple_codesign::SigningSettings;
 use hex;
 use rcgen::{CertificateParams, DnType, KeyPair};
-use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::{
     RsaPrivateKey,
     pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding},
@@ -11,16 +11,16 @@ use sha1::{Digest, Sha1};
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
-use x509_certificate::X509Certificate;
+use x509_certificate::{CapturedX509Certificate, InMemorySigningKeyPair, Sign, X509Certificate};
 
 use crate::Error;
 use crate::developer_session::{DeveloperDeviceType, DeveloperSession, DeveloperTeam};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CertificateIdentity {
     pub certificate: Option<X509Certificate>,
+    pub key_pair: InMemorySigningKeyPair,
     pub private_key: RsaPrivateKey,
     pub key_file: PathBuf,
     pub cert_file: PathBuf,
@@ -65,8 +65,17 @@ impl CertificateIdentity {
             private_key
         };
 
+        let key_pair = InMemorySigningKeyPair::from_pkcs8_der(
+            private_key
+                .to_pkcs8_der()
+                .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?
+                .as_bytes(),
+        )
+        .map_err(|e| Error::Certificate(format!("Failed to decode private key: {}", e)))?;
+
         let mut cert_identity = CertificateIdentity {
             certificate: None,
+            key_pair,
             private_key,
             key_file,
             cert_file,
@@ -105,12 +114,7 @@ impl CertificateIdentity {
             .await
             .map_err(|e| Error::Certificate(format!("Failed to list certificates: {:?}", e)))?;
 
-        let our_public_key_der = self
-            .private_key
-            .to_public_key()
-            .to_pkcs1_der()
-            .map_err(|e| Error::Certificate(format!("Failed to get public key: {}", e)))?
-            .to_vec();
+        let our_public_key_der = self.key_pair.public_key_data().to_vec();
 
         for cert in certificates
             .iter()
@@ -233,29 +237,65 @@ impl CertificateIdentity {
         let serial = &cert.tbs_certificate().serial_number;
         let hex_str = hex::encode(serial.as_slice());
 
-        Ok(hex_str.trim_start_matches("0").to_string())
+        Ok(hex_str.trim_start_matches("0").to_string().to_uppercase())
     }
 
     pub fn to_pkcs12(&self, password: &str) -> Result<Vec<u8>, Error> {
-        let output = Command::new("openssl")
-            .arg("pkcs12")
-            .arg("-export")
-            .arg("-inkey")
-            .arg(&self.key_file)
-            .arg("-in")
-            .arg(&self.cert_file)
-            .arg("-passout")
-            .arg(format!("pass:{}", password))
-            .output()
-            .map_err(|e| Error::Certificate(format!("Failed to execute openssl: {}", e)))?;
+        let cert = self
+            .certificate
+            .as_ref()
+            .ok_or(Error::Certificate("Certificate not found".to_string()))?;
 
-        if !output.status.success() {
-            return Err(Error::Certificate(format!(
-                "openssl failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
+        let cert_der = cert
+            .encode_der()
+            .map_err(|e| Error::Certificate(format!("Failed to encode certificate: {}", e)))?;
 
-        Ok(output.stdout)
+        let key_der = self
+            .private_key
+            .to_pkcs8_der()
+            .map_err(|e| Error::Certificate(format!("Failed to encode private key: {}", e)))?;
+
+        let pfx = p12::PFX::new(
+            &cert_der,
+            key_der.as_bytes(),
+            None,
+            password,
+            &self.machine_name,
+        )
+        .ok_or(Error::Certificate("Failed to create PKCS#12".to_string()))?;
+
+        Ok(pfx.to_der())
+    }
+
+    pub fn to_signing_settings(&self) -> Result<SigningSettings<'_>, Error> {
+        let mut settings = SigningSettings::default();
+
+        let certificate = self
+            .certificate
+            .as_ref()
+            .ok_or(Error::Certificate("Certificate not found".to_string()))?;
+
+        settings.set_signing_key(
+            &self.key_pair,
+            CapturedX509Certificate::from_der(
+                certificate.encode_der().map_err(|e| {
+                    Error::Certificate(format!("Failed to encode certificate: {}", e))
+                })?,
+            )
+            .map_err(|e| {
+                Error::Certificate(format!("Failed to create captured certificate: {}", e))
+            })?,
+        );
+        settings.chain_apple_certificates();
+        settings.set_for_notarization(false);
+        settings.set_shallow(true);
+        settings.set_team_id_from_signing_certificate().ok_or({
+            Error::Certificate("Failed to set team ID from signing certificate".to_string())
+        })?;
+        settings
+            .set_time_stamp_url("http://timestamp.apple.com/ts01")
+            .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+
+        Ok(settings)
     }
 }

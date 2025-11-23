@@ -58,7 +58,9 @@ async fn main() {
     let dev_session = DeveloperSession::new(Arc::new(account));
 
     // You can change the machine name, store directory (for certs, anisette data, & provision files), and logger
-    let config = SideloadConfiguration::default().set_machine_name("isideload-demo".to_string());
+    let config = SideloadConfiguration::default()
+        .set_machine_name("isideload-demo".to_string())
+        .set_force_sidestore(true);
 
     sideload_app(&provider, &dev_session, app_path, config)
         .await

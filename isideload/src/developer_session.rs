@@ -724,3 +724,56 @@ pub struct ProvisioningProfile {
     pub _name: String,
     pub encoded_profile: Vec<u8>,
 }
+
+impl ProvisioningProfile {
+    // TODO: I'm not sure if this is the proper way to parse this but it works so...
+    pub fn profile_plist(&self) -> Result<plist::Dictionary, Error> {
+        let start_marker = b"<?xml";
+        let end_marker = b"</plist>";
+
+        let start = self
+            .encoded_profile
+            .windows(start_marker.len())
+            .position(|w| w == start_marker)
+            .ok_or_else(|| {
+                Error::Generic("Failed to find start of plist in provisioning profile".to_string())
+            })?;
+
+        let end = self
+            .encoded_profile
+            .windows(end_marker.len())
+            .position(|w| w == end_marker)
+            .ok_or_else(|| {
+                Error::Generic("Failed to find end of plist in provisioning profile".to_string())
+            })?
+            + end_marker.len();
+
+        plist::from_bytes::<plist::Dictionary>(&self.encoded_profile[start..end]).map_err(|e| {
+            Error::Generic(format!("Failed to parse provisioning profile plist: {}", e))
+        })
+    }
+
+    pub fn entitlements_xml(&self) -> Result<String, Error> {
+        let profile_plist = self.profile_plist()?;
+        let entitlements = profile_plist.get("Entitlements").ok_or_else(|| {
+            Error::Generic("No Entitlements found in provisioning profile".to_string())
+        })?;
+        let mut buf = vec![];
+        entitlements.to_writer_xml(&mut buf).map_err(|e| {
+            Error::Generic(format!(
+                "Failed to convert entitlements to XML for codesigning: {}",
+                e
+            ))
+        })?;
+        let entitlements = std::str::from_utf8(&buf)
+            .map_err(|e| {
+                Error::Generic(format!(
+                    "Failed to convert entitlements to UTF-8 for codesigning: {}",
+                    e
+                ))
+            })?
+            .to_string();
+
+        Ok(entitlements)
+    }
+}

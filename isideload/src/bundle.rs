@@ -7,12 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug, Clone)]
 pub struct Bundle {
     pub app_info: Dictionary,
     pub bundle_dir: PathBuf,
-
+    pub bundle_type: BundleType,
     app_extensions: Vec<Bundle>,
-    _frameworks: Vec<Bundle>,
+    frameworks: Vec<Bundle>,
     _libraries: Vec<String>,
 }
 
@@ -79,9 +80,15 @@ impl Bundle {
 
         Ok(Bundle {
             app_info,
+            bundle_type: BundleType::from_extension(
+                bundle_path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or(""),
+            ),
             bundle_dir: bundle_path,
             app_extensions,
-            _frameworks: frameworks,
+            frameworks,
             _libraries: libraries,
         })
     }
@@ -124,6 +131,15 @@ impl Bundle {
             )));
         }
         Ok(())
+    }
+
+    pub fn embedded_bundles(&self) -> Vec<&Bundle> {
+        let mut bundles = Vec::new();
+        bundles.extend(self.app_extensions.iter());
+        bundles.extend(self.frameworks.iter());
+        bundles.push(self);
+        bundles.sort_by_key(|b| b.bundle_dir.components().count());
+        bundles
     }
 }
 
@@ -177,4 +193,24 @@ fn find_dylibs(dir: &Path, bundle_root: &Path) -> Result<Vec<String>, Error> {
 
     collect_dylibs(dir, bundle_root, &mut libraries)?;
     Ok(libraries)
+}
+
+// Borrowed from https://github.com/khcrysalis/PlumeImpactor/blob/main/crates/utils/src/bundle.rs
+#[derive(Debug, Clone)]
+pub enum BundleType {
+    App,
+    AppExtension,
+    Framework,
+    Unknown,
+}
+
+impl BundleType {
+    pub fn from_extension(ext: &str) -> Self {
+        match ext {
+            "app" => BundleType::App,
+            "appex" => BundleType::AppExtension,
+            "framework" => BundleType::Framework,
+            _ => BundleType::Unknown,
+        }
+    }
 }

@@ -1,18 +1,19 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference.
 
-use apple_codesign::{BundleSigner, SigningSettings};
-use der::Encode;
+use apple_codesign::{SettingsScope, UnifiedSigner};
 use idevice::IdeviceService;
 use idevice::lockdown::LockdownClient;
 use idevice::provider::IdeviceProvider;
 
 use crate::application::Application;
+use crate::developer_session::ProvisioningProfile;
 use crate::device::install_app;
 use crate::{DeveloperTeam, Error, SideloadConfiguration, SideloadLogger};
 use crate::{
     certificate::CertificateIdentity,
     developer_session::{DeveloperDeviceType, DeveloperSession},
 };
+use std::collections::HashMap;
 use std::{io::Write, path::PathBuf};
 
 fn error_and_return(logger: &dyn SideloadLogger, error: Error) -> Result<(), Error> {
@@ -106,7 +107,8 @@ pub async fn sideload_app(
     };
 
     let mut app = Application::new(app_path)?;
-    let is_sidestore = app.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore";
+    let is_sidestore = config.force_sidestore
+        || app.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore";
     let main_app_bundle_id = match app.bundle.bundle_identifier() {
         Some(id) => id.to_string(),
         None => {
@@ -255,7 +257,7 @@ pub async fn sideload_app(
 
     let group_identifier = format!(
         "group.{}",
-        if config.force_sidestore_app_group {
+        if config.force_sidestore {
             format!("com.SideStore.SideStore.{}", team.team_id)
         } else {
             main_app_id_str.clone()
@@ -321,7 +323,7 @@ pub async fn sideload_app(
         matching_app_groups[0].clone()
     };
 
-    //let mut provisioning_profiles: HashMap<String, ProvisioningProfile> = HashMap::new();
+    let mut provisioning_profiles: HashMap<String, ProvisioningProfile> = HashMap::new();
     for app_id in app_ids {
         let assign_res = dev_session
             .assign_application_group_to_app_id(
@@ -334,37 +336,21 @@ pub async fn sideload_app(
         if assign_res.is_err() {
             return error_and_return(logger, assign_res.err().unwrap());
         }
-        // let provisioning_profile = match account
-        //     // This doesn't seem right to me, but it's what Sideloader does... Shouldn't it be downloading the provisioning profile for this app ID, not the main?
-        //     .download_team_provisioning_profile(DeveloperDeviceType::Ios, &team, &main_app_id)
-        //     .await
-        // {
-        //     Ok(pp /* tee hee */) => pp,
-        //     Err(e) => {
-        //         return emit_error_and_return(
-        //             &window,
-        //             &format!("Failed to download provisioning profile: {:?}", e),
-        //         );
-        //     }
-        // };
-        // provisioning_profiles.insert(app_id.identifier.clone(), provisioning_profile);
+        let provisioning_profile = match dev_session
+            .download_team_provisioning_profile(DeveloperDeviceType::Ios, &team, &app_id)
+            .await
+        {
+            Ok(pp /* tee hee */) => pp,
+            Err(e) => {
+                return error_and_return(logger, e);
+            }
+        };
+        provisioning_profiles.insert(app_id.identifier.clone(), provisioning_profile);
     }
 
     logger.log("Successfully registered app groups");
 
-    let provisioning_profile = match dev_session
-        .download_team_provisioning_profile(DeveloperDeviceType::Ios, &team, &main_app_id)
-        .await
-    {
-        Ok(pp /* tee hee */) => pp,
-        Err(e) => {
-            return error_and_return(logger, e);
-        }
-    };
-
-    let profile_path = config
-        .store_dir
-        .join(format!("{}.mobileprovision", main_app_id_str));
+    let profile_path = app.bundle.bundle_dir.join("embedded.mobileprovision");
 
     if profile_path.exists() {
         std::fs::remove_file(&profile_path).map_err(Error::Filesystem)?;
@@ -386,37 +372,53 @@ pub async fn sideload_app(
         ext.write_info()?;
     }
 
-    // match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
-    //     .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
-    //     .with_pkey_file(cert.get_private_key_file_path().to_str().unwrap())
-    //     .with_prov_file(profile_path.to_str().unwrap())
-    //     .sign()
-    // {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         return error_and_return(logger, Error::ZSignError(e));
-    //     }
-    // };
+    // Collect owned bundle identifiers and directories so we don't capture `app` or `logger` by reference in the blocking thread.
+    let embedded_bundles_info: Vec<(String, PathBuf)> = app
+        .bundle
+        .embedded_bundles()
+        .iter()
+        .map(|bundle| {
+            (
+                bundle.bundle_identifier().unwrap_or("Unknown").to_string(),
+                bundle.bundle_dir.clone(),
+            )
+        })
+        .collect();
+    let main_bundle_dir = app.bundle.bundle_dir.clone();
 
-    let mut signer = BundleSigner::new_from_path(&app.bundle.bundle_dir)
-        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+    // Log bundle signing messages outside the blocking closure to avoid capturing non-'static references.
+    for (id, _) in &embedded_bundles_info {
+        logger.log(&format!("Signing bundle: {}", id));
+    }
 
-    signer
-        .collect_nested_bundles()
-        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+    // Move owned data (cert, provisioning_profile, embedded_bundles_info) into the blocking task.
+    tokio::task::spawn_blocking(move || {
+        for (_id, bundle_dir) in embedded_bundles_info {
+            // Recreate settings for each bundle so ownership is clear and we don't move settings across iterations.
+            let mut settings = cert.to_signing_settings()?;
+            settings
+                .set_entitlements_xml(
+                    SettingsScope::Main,
+                    provisioning_profile.entitlements_xml()?,
+                )
+                .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
 
-    let mut settings = SigningSettings::default();
+            let signer = UnifiedSigner::new(settings);
 
-    settings.set_signing_key(cert.private_key.clone(), cert.certificate.unwrap());
+            signer
+                .sign_path_in_place(&bundle_dir)
+                .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
+        }
+        Ok::<(), Error>(())
+    })
+    .await
+    .map_err(|e| Error::Generic(format!("Signing task failed: {}", e)))??;
 
-    signer
-        .write_signed_bundle(&app.bundle.bundle_dir, &settings)
-        .map_err(|e| Error::AppleCodesignError(Box::new(e)))?;
-    logger.log("App signed!");
+    logger.log("Sucessfully signed app");
 
-    logger.log("Installing app (Transfer)... 0%");
+    logger.log("Installing app... 0%");
 
-    let res = install_app(device_provider, &app.bundle.bundle_dir, |percentage| {
+    let res = install_app(device_provider, &main_bundle_dir, |percentage| {
         logger.log(&format!("Installing app... {}%", percentage));
     })
     .await;
@@ -424,12 +426,12 @@ pub async fn sideload_app(
         return error_and_return(logger, e);
     }
 
-    if config.revoke_cert {
-        dev_session
-            .revoke_development_cert(DeveloperDeviceType::Ios, &team, &cert.get_serial_number()?)
-            .await?;
-        logger.log("Certificate revoked");
-    }
+    // if config.revoke_cert {
+    //     dev_session
+    //         .revoke_development_cert(DeveloperDeviceType::Ios, &team, &cert.get_serial_number()?)
+    //         .await?;
+    //     logger.log("Certificate revoked");
+    // }
 
     Ok(())
 }
