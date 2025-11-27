@@ -105,7 +105,14 @@ pub async fn sideload_app(
     };
 
     let mut app = Application::new(app_path)?;
+
     let is_sidestore = app.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore";
+    let is_lc_and_sidestore = app
+        .bundle
+        .frameworks()
+        .iter()
+        .any(|f| f.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore");
+
     let main_app_bundle_id = match app.bundle.bundle_identifier() {
         Some(id) => id.to_string(),
         None => {
@@ -254,35 +261,44 @@ pub async fn sideload_app(
 
     let group_identifier = format!(
         "group.{}",
-        if config.force_sidestore_app_group {
+        if is_lc_and_sidestore {
             format!("com.SideStore.SideStore.{}", team.team_id)
         } else {
             main_app_id_str.clone()
         }
     );
 
-    if is_sidestore {
+    if is_sidestore || is_lc_and_sidestore {
         app.bundle.app_info.insert(
             "ALTAppGroups".to_string(),
             plist::Value::Array(vec![plist::Value::String(group_identifier.clone())]),
         );
 
-        app.bundle.app_info.insert(
-            "ALTCertificateID".to_string(),
-            plist::Value::String(cert.get_serial_number().unwrap()),
-        );
+        let target_bundle = if is_lc_and_sidestore {
+            app.bundle
+                .frameworks_mut()
+                .iter_mut()
+                .find(|fw| fw.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore")
+        } else {
+            Some(&mut app.bundle)
+        };
 
-        match cert.to_pkcs12(&cert.machine_id) {
-            Ok(p12_bytes) => {
-                let alt_cert_path = app.bundle.bundle_dir.join("ALTCertificate.p12");
-                if alt_cert_path.exists() {
-                    std::fs::remove_file(&alt_cert_path).map_err(Error::Filesystem)?;
+        if let Some(target_bundle) = target_bundle {
+            target_bundle.app_info.insert(
+                "ALTCertificateID".to_string(),
+                plist::Value::String(cert.get_serial_number().unwrap()),
+            );
+
+            match cert.to_pkcs12(&cert.machine_id) {
+                Ok(p12_bytes) => {
+                    let alt_cert_path = target_bundle.bundle_dir.join("ALTCertificate.p12");
+
+                    let mut file =
+                        std::fs::File::create(&alt_cert_path).map_err(Error::Filesystem)?;
+                    file.write_all(&p12_bytes).map_err(Error::Filesystem)?;
                 }
-
-                let mut file = std::fs::File::create(&alt_cert_path).map_err(Error::Filesystem)?;
-                file.write_all(&p12_bytes).map_err(Error::Filesystem)?;
+                Err(e) => return error_and_return(logger, e),
             }
-            Err(e) => return error_and_return(logger, e),
         }
     }
 
@@ -384,11 +400,16 @@ pub async fn sideload_app(
     for ext in app.bundle.app_extensions_mut() {
         ext.write_info()?;
     }
+    for ext in app.bundle.frameworks_mut() {
+        ext.write_info()?;
+    }
 
     match ZSignOptions::new(app.bundle.bundle_dir.to_str().unwrap())
         .with_cert_file(cert.get_certificate_file_path().to_str().unwrap())
         .with_pkey_file(cert.get_private_key_file_path().to_str().unwrap())
         .with_prov_file(profile_path.to_str().unwrap())
+        .with_force()
+        .with_disable_cache()
         .sign()
     {
         Ok(_) => {}

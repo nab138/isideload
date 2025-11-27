@@ -7,12 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
 pub struct Bundle {
     pub app_info: Dictionary,
     pub bundle_dir: PathBuf,
 
     app_extensions: Vec<Bundle>,
-    _frameworks: Vec<Bundle>,
+    frameworks: Vec<Bundle>,
     _libraries: Vec<String>,
 }
 
@@ -81,7 +82,7 @@ impl Bundle {
             app_info,
             bundle_dir: bundle_path,
             app_extensions,
-            _frameworks: frameworks,
+            frameworks,
             _libraries: libraries,
         })
     }
@@ -111,6 +112,14 @@ impl Bundle {
 
     pub fn app_extensions_mut(&mut self) -> &mut [Bundle] {
         &mut self.app_extensions
+    }
+
+    pub fn frameworks(&self) -> &[Bundle] {
+        &self.frameworks
+    }
+
+    pub fn frameworks_mut(&mut self) -> &mut [Bundle] {
+        &mut self.frameworks
     }
 
     pub fn write_info(&self) -> Result<(), Error> {

@@ -63,8 +63,6 @@ pub struct SideloadConfiguration<'a> {
     pub store_dir: std::path::PathBuf,
     /// Whether or not to revoke the certificate immediately after installation
     pub revoke_cert: bool,
-    /// Whether or not to force SideStore App Group (fixes LiveContainer+SideStore issues)
-    pub force_sidestore_app_group: bool,
 }
 
 impl Default for SideloadConfiguration<'_> {
@@ -80,7 +78,6 @@ impl<'a> SideloadConfiguration<'a> {
             logger: &DefaultLogger,
             store_dir: std::env::current_dir().unwrap(),
             revoke_cert: false,
-            force_sidestore_app_group: false,
         }
     }
 
@@ -101,11 +98,6 @@ impl<'a> SideloadConfiguration<'a> {
 
     pub fn set_revoke_cert(mut self, revoke_cert: bool) -> Self {
         self.revoke_cert = revoke_cert;
-        self
-    }
-
-    pub fn set_force_sidestore_app_group(mut self, force: bool) -> Self {
-        self.force_sidestore_app_group = force;
         self
     }
 }
