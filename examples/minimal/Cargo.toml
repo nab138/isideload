@@ -5,6 +5,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-isideload = { path = "../../isideload", features = ["vendored-openssl", "obfuscate"] }
+isideload = { path = "../../isideload", features = ["vendored-openssl"] }
 idevice = { version = "0.1.46", features = ["usbmuxd", "ring"], default-features = false}
 tokio = { version = "1.43", features = ["macros", "rt-multi-thread"] }
