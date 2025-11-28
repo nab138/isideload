@@ -101,3 +101,19 @@ impl<'a> SideloadConfiguration<'a> {
         self
     }
 }
+
+#[cfg(feature = "obfuscate")]
+#[macro_export]
+macro_rules! obf {
+    ($lit:literal) => {
+        &obfstr::obfstring!($lit)
+    };
+}
+
+#[cfg(not(feature = "obfuscate"))]
+#[macro_export]
+macro_rules! obf {
+    ($lit:literal) => {
+        &$lit.to_string()
+    };
+}

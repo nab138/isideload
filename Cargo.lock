@@ -111,7 +111,7 @@ dependencies = [
  "crc32fast",
  "futures-lite",
  "pin-project",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-util",
 ]
@@ -195,6 +195,12 @@ name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
+
+[[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
@@ -683,7 +689,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "futures-util",
- "http 0.2.12",
+ "http",
  "indexmap",
  "slab",
  "tokio",
@@ -724,24 +730,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "http"
-version = "1.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4a85d31aea989eead29a3aaf9e1115a180df8282431156e533de47660892565"
-dependencies = [
- "bytes",
- "fnv",
- "itoa",
-]
-
-[[package]]
 name = "http-body"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
 dependencies = [
  "bytes",
- "http 0.2.12",
+ "http",
  "pin-project-lite",
 ]
 
@@ -768,7 +763,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "h2",
- "http 0.2.12",
+ "http",
  "http-body",
  "httparse",
  "httpdate",
@@ -788,7 +783,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec3efd23720e2049821a693cbc7e65ea87c72f1c58ff2f9522ff332b1491e590"
 dependencies = [
  "futures-util",
- "http 0.2.12",
+ "http",
  "hyper",
  "rustls 0.21.12",
  "tokio",
@@ -923,10 +918,11 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "futures",
+ "obfstr",
  "plist",
  "rustls 0.23.35",
  "serde",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-rustls 0.26.4",
  "tracing",
@@ -986,11 +982,12 @@ dependencies = [
  "hex",
  "idevice",
  "nab138_icloud_auth",
+ "obfstr",
  "openssl",
  "plist",
  "serde",
  "sha1",
- "thiserror",
+ "thiserror 2.0.17",
  "uuid",
  "zip",
  "zsign-rust",
@@ -1130,9 +1127,9 @@ dependencies = [
 
 [[package]]
 name = "nab138_icloud_auth"
-version = "0.1.5"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2707d665f2ceb5dfc1baf632fd708c6ffba2596f9e63fea054367d1b0e3b7317"
+checksum = "9974d0c323b02010a93eba36368153b8ca3003ac3f7fdd810b025d5ade24edca"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1142,25 +1139,26 @@ dependencies = [
  "nab138_omnisette",
  "nab138_srp",
  "num-bigint",
+ "obfstr",
  "pbkdf2",
  "pkcs7",
  "plist",
- "rand",
+ "rand 0.9.2",
  "reqwest",
  "rustls 0.23.35",
  "rustls-pemfile 2.2.0",
  "serde",
  "serde_json",
  "sha2",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
 ]
 
 [[package]]
 name = "nab138_omnisette"
-version = "0.1.3"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322cfbcadd65524423b56558259aa093287f1d91bba3515a39de0a38b75d3d36"
+checksum = "2be32155e6400d1b8dbec36f197fc71790770b991beee2f81d2f78afc526a861"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1168,13 +1166,14 @@ dependencies = [
  "chrono",
  "futures-util",
  "log",
+ "obfstr",
  "plist",
- "rand",
+ "rand 0.9.2",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio-tungstenite",
  "uuid",
 ]
@@ -1253,6 +1252,12 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "obfstr"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0d354e9a302760d07e025701d40534f17dd1fe4c4db955b4e3bd2907c63bdee"
 
 [[package]]
 name = "once_cell"
@@ -1498,12 +1503,33 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+dependencies = [
+ "libc",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
 dependencies = [
- "rand_chacha",
+ "rand_chacha 0.9.0",
  "rand_core 0.9.3",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -1576,7 +1602,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "h2",
- "http 0.2.12",
+ "http",
  "http-body",
  "hyper",
  "hyper-rustls",
@@ -1605,7 +1631,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots 0.25.4",
+ "webpki-roots",
  "winreg",
 ]
 
@@ -1977,11 +2003,31 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.17",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2094,18 +2140,17 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.27.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "489a59b6730eda1b0171fcfda8b121f4bee2b35cba8645ca35c5f7ba3eb736c1"
+checksum = "212d5dcb2a1ce06d81107c3d0ffa3121fe974b73f068c8282cb1c32328113b6c"
 dependencies = [
  "futures-util",
  "log",
- "rustls 0.23.35",
- "rustls-pki-types",
+ "rustls 0.21.12",
  "tokio",
- "tokio-rustls 0.26.4",
+ "tokio-rustls 0.24.1",
  "tungstenite",
- "webpki-roots 0.26.11",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -2167,20 +2212,21 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tungstenite"
-version = "0.27.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eadc29d668c91fcc564941132e17b28a7ceb2f3ebf0b9dae3e03fd7a6748eb0d"
+checksum = "9e3dac10fd62eaf6617d3a904ae222845979aec67c615d1c842b4002c7666fb9"
 dependencies = [
+ "byteorder",
  "bytes",
  "data-encoding",
- "http 1.3.1",
+ "http",
  "httparse",
  "log",
- "rand",
- "rustls 0.23.35",
- "rustls-pki-types",
+ "rand 0.8.5",
+ "rustls 0.21.12",
  "sha1",
- "thiserror",
+ "thiserror 1.0.69",
+ "url",
  "utf-8",
 ]
 
@@ -2244,7 +2290,7 @@ checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"
 dependencies = [
  "getrandom 0.3.4",
  "js-sys",
- "rand",
+ "rand 0.9.2",
  "uuid-macro-internal",
  "wasm-bindgen",
 ]
@@ -2369,24 +2415,6 @@ name = "webpki-roots"
 version = "0.25.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f20c57d8d7db6d3b86154206ae5d8fba62dd39573114de97c2cb0578251f8e1"
-
-[[package]]
-name = "webpki-roots"
-version = "0.26.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
-dependencies = [
- "webpki-roots 1.0.4",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2878ef029c47c6e8cf779119f20fcf52bde7ad42a731b2a304bc221df17571e"
-dependencies = [
- "rustls-pki-types",
-]
 
 [[package]]
 name = "windows-core"
@@ -2847,6 +2875,6 @@ dependencies = [
  "cc",
  "openssl-src",
  "pkg-config",
- "thiserror",
+ "thiserror 2.0.17",
  "vcpkg",
 ]

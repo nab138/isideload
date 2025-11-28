@@ -13,11 +13,12 @@ readme = "../README.md"
 [features]
 default = []
 vendored-openssl = ["openssl/vendored", "zsign-rust/vendored-openssl"]
+obfuscate = ["idevice/obfuscate", "icloud_auth/obfuscate", "dep:obfstr"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 plist = { version = "1.7" }
-icloud_auth = { version = "0.1.5", package = "nab138_icloud_auth" }
+icloud_auth = { version = "0.1.9", package = "nab138_icloud_auth" }
 uuid = { version = "1.17.0", features = ["v4"] }
 zip = { version = "4.3", default-features = false, features = ["deflate"] }
 hex = "0.4"
@@ -26,3 +27,4 @@ idevice = { version = "0.1.46", features = ["afc", "installation_proxy", "ring"]
 openssl = "0.10"
 zsign-rust = "0.1.7"
 thiserror = "2"
+obfstr = { version = "0.4", optional = true }

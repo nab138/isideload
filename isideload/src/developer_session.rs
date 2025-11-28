@@ -1,6 +1,6 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference for the apple private endpoints
 
-use crate::Error;
+use crate::{Error, obf};
 use icloud_auth::{AppleAccount, Error as ICloudError};
 use plist::{Date, Dictionary, Value};
 use serde::{Deserialize, Serialize};
@@ -28,11 +28,11 @@ impl DeveloperSession {
         let mut request = Dictionary::new();
         request.insert(
             "clientId".to_string(),
-            Value::String("XABBG36SBA".to_string()),
+            Value::String(obf!("XABBG36SBA").to_string()),
         );
         request.insert(
             "protocolVersion".to_string(),
-            Value::String("QH65B2".to_string()),
+            Value::String(obf!("QH65B2").to_string()),
         );
         request.insert(
             "requestId".to_string(),
@@ -79,8 +79,12 @@ impl DeveloperSession {
     }
 
     pub async fn list_teams(&self) -> Result<Vec<DeveloperTeam>, Error> {
-        let url = "https://developerservices2.apple.com/services/QH65B2/listTeams.action?clientId=XABBG36SBA";
-        let response = self.send_developer_request(url, None).await?;
+        let url = obf!(
+            "https://developerservices2.apple.com/services/QH65B2/listTeams.action?clientId=XABBG36SBA"
+        );
+        let response = self
+            .send_developer_request(url.to_string().as_str(), None)
+            .await?;
 
         let teams = response
             .get("teams")
@@ -134,7 +138,7 @@ impl DeveloperSession {
         device_type: DeveloperDeviceType,
         team: &DeveloperTeam,
     ) -> Result<Vec<DeveloperDevice>, Error> {
-        let url = dev_url(device_type, "listDevices");
+        let url = dev_url(device_type, obf!("listDevices"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         let response = self.send_developer_request(&url, Some(body)).await?;
@@ -180,7 +184,7 @@ impl DeveloperSession {
         device_name: &str,
         udid: &str,
     ) -> Result<DeveloperDevice, Error> {
-        let url = dev_url(device_type, "addDevice");
+        let url = dev_url(device_type, obf!("addDevice"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert("name".to_string(), Value::String(device_name.to_string()));
@@ -221,7 +225,7 @@ impl DeveloperSession {
         device_type: DeveloperDeviceType,
         team: &DeveloperTeam,
     ) -> Result<Vec<DevelopmentCertificate>, Error> {
-        let url = dev_url(device_type, "listAllDevelopmentCerts");
+        let url = dev_url(device_type, obf!("listAllDevelopmentCerts"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
 
@@ -286,7 +290,7 @@ impl DeveloperSession {
         team: &DeveloperTeam,
         serial_number: &str,
     ) -> Result<(), Error> {
-        let url = dev_url(device_type, "revokeDevelopmentCert");
+        let url = dev_url(device_type, obf!("revokeDevelopmentCert"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert(
@@ -305,7 +309,7 @@ impl DeveloperSession {
         csr_content: String,
         machine_name: String,
     ) -> Result<String, Error> {
-        let url = dev_url(device_type, "submitDevelopmentCSR");
+        let url = dev_url(device_type, obf!("submitDevelopmentCSR"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert("csrContent".to_string(), Value::String(csr_content));
@@ -334,7 +338,7 @@ impl DeveloperSession {
         device_type: DeveloperDeviceType,
         team: &DeveloperTeam,
     ) -> Result<ListAppIdsResponse, Error> {
-        let url = dev_url(device_type, "listAppIds");
+        let url = dev_url(device_type, obf!("listAppIds"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
 
@@ -424,7 +428,7 @@ impl DeveloperSession {
         name: &str,
         identifier: &str,
     ) -> Result<(), Error> {
-        let url = dev_url(device_type, "addAppId");
+        let url = dev_url(device_type, obf!("addAppId"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert("name".to_string(), Value::String(name.to_string()));
@@ -445,7 +449,7 @@ impl DeveloperSession {
         app_id: &AppId,
         features: &Dictionary,
     ) -> Result<Dictionary, Error> {
-        let url = dev_url(device_type, "updateAppId");
+        let url = dev_url(device_type, obf!("updateAppId"));
         let mut body = Dictionary::new();
         body.insert(
             "appIdId".to_string(),
@@ -476,7 +480,7 @@ impl DeveloperSession {
         team: &DeveloperTeam,
         app_id_id: String,
     ) -> Result<(), Error> {
-        let url = dev_url(device_type, "deleteAppId");
+        let url = dev_url(device_type, obf!("deleteAppId"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert("appIdId".to_string(), Value::String(app_id_id.clone()));
@@ -491,7 +495,7 @@ impl DeveloperSession {
         device_type: DeveloperDeviceType,
         team: &DeveloperTeam,
     ) -> Result<Vec<ApplicationGroup>, Error> {
-        let url = dev_url(device_type, "listApplicationGroups");
+        let url = dev_url(device_type, obf!("listApplicationGroups"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
 
@@ -540,7 +544,7 @@ impl DeveloperSession {
         group_identifier: &str,
         name: &str,
     ) -> Result<ApplicationGroup, Error> {
-        let url = dev_url(device_type, "addApplicationGroup");
+        let url = dev_url(device_type, obf!("addApplicationGroup"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert("name".to_string(), Value::String(name.to_string()));
@@ -584,7 +588,7 @@ impl DeveloperSession {
         app_id: &AppId,
         app_group: &ApplicationGroup,
     ) -> Result<(), Error> {
-        let url = dev_url(device_type, "assignApplicationGroupToAppId");
+        let url = dev_url(device_type, obf!("assignApplicationGroupToAppId"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert(
@@ -607,7 +611,7 @@ impl DeveloperSession {
         team: &DeveloperTeam,
         app_id: &AppId,
     ) -> Result<ProvisioningProfile, Error> {
-        let url = dev_url(device_type, "downloadTeamProvisioningProfile");
+        let url = dev_url(device_type, obf!("downloadTeamProvisioningProfile"));
         let mut body = Dictionary::new();
         body.insert("teamId".to_string(), Value::String(team.team_id.clone()));
         body.insert(
@@ -666,9 +670,11 @@ impl DeveloperDeviceType {
 
 fn dev_url(device_type: DeveloperDeviceType, endpoint: &str) -> String {
     format!(
-        "https://developerservices2.apple.com/services/QH65B2/{}{}.action?clientId=XABBG36SBA",
+        "{}{}{}{}",
+        obf!("https://developerservices2.apple.com/services/QH65B2/"),
         device_type.url_segment(),
-        endpoint
+        endpoint,
+        obf!(".action?clientId=XABBG36SBA")
     )
 }
 
