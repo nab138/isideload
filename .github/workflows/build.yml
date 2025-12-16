@@ -15,8 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "ubuntu-22.04"
+          - platform: "ubuntu-latest"
           - platform: "windows-latest"
+          - platform: "macos-latest"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -29,16 +30,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-tauri-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-
+            ${{ runner.os }}-
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add MSVC to PATH
-        if: matrix.platform == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Build
-        run: cargo build --features "vendored-openssl"
+        run: cargo build

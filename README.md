@@ -96,13 +96,13 @@ See [examples/minimal/src/main.rs](examples/minimal/src/main.rs).
 
 ## Licensing
 
-This project is licensed under the MPL-2.0 License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Credits
 
 - The amazing [idevice](https://github.com/jkcoxson/idevice) crate is used to communicate with the device
 
-- Packages from [`apple-private-apis`](https://github.com/SideStore/apple-private-apis) were used for authentication, but the original project was left unfinished. To support isideload, `apple-private-apis` was forked and modified to add missing features. With permission from the original developers, the fork was published to crates.io until the official project is published.
+- Packages from [`apple-private-apis`](https://github.com/SideStore/apple-private-apis), which is licensed under MPL-2.0, were used for authentication, but the original project was left unfinished. To support isideload, `apple-private-apis` was [forked](https://github.com/nab138/apple-private-apis) and modified to add missing features. With permission from the original developers, the fork was published to crates.io until the official project is published.
 
 - [apple-codesign](https://crates.io/crates/apple-codesign) was used for code signing, which is licensed under MPL-2.0.
 
