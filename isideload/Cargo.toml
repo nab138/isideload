@@ -14,3 +14,5 @@ readme = "../README.md"
 default = []
 
 [dependencies]
+idevice = "0.1.50"
+plist = "1.8.0"
