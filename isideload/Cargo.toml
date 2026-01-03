@@ -3,7 +3,7 @@ name = "isideload"
 description = "Sideload iOS/iPadOS applications"
 license = "MPL-2.0"
 authors = ["Nicholas Sharp <nab@nabdev.me>"]
-version = "0.1.24"
+version = "0.1.25"
 edition = "2024"
 repository = "https://github.com/nab138/isideload"
 documentation = "https://docs.rs/isideload"
@@ -18,7 +18,7 @@ obfuscate = ["idevice/obfuscate", "icloud_auth/obfuscate", "dep:obfstr"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 plist = { version = "1.7" }
-icloud_auth = { version = "0.1.9", package = "nab138_icloud_auth" }
+icloud_auth = { version = "0.1.10", package = "nab138_icloud_auth" }
 uuid = { version = "1.17.0", features = ["v4"] }
 zip = { version = "4.3", default-features = false, features = ["deflate"] }
 hex = "0.4"
@@ -28,3 +28,4 @@ openssl = "0.10"
 zsign-rust = "0.1.7"
 thiserror = "2"
 obfstr = { version = "0.4", optional = true }
+reqwest = { version = "0.11.14", features = ["blocking", "json", "default-tls"] }

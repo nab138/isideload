@@ -126,10 +126,10 @@ impl Bundle {
         let info_plist_path = self.bundle_dir.join("Info.plist");
         let result = plist::to_file_binary(&info_plist_path, &self.app_info);
 
-        if result.is_err() {
+        if let Err(e) = result {
             return Err(Error::InvalidBundle(format!(
                 "Failed to write Info.plist: {}",
-                result.unwrap_err()
+                e
             )));
         }
         Ok(())

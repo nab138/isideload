@@ -257,6 +257,12 @@ pub async fn sideload_app(
             };
             app_id.features = new_features;
         }
+
+        if config.add_increased_memory_limit {
+            dev_session
+                .add_increased_memory_limit(&team, app_id)
+                .await?;
+        }
     }
 
     let group_identifier = format!(

@@ -65,6 +65,8 @@ pub struct SideloadConfiguration<'a> {
     pub store_dir: std::path::PathBuf,
     /// Whether or not to revoke the certificate immediately after installation
     pub revoke_cert: bool,
+    /// Whether or not to add the increased memory limit entitlement to the app
+    pub add_increased_memory_limit: bool,
 }
 
 impl Default for SideloadConfiguration<'_> {
@@ -80,6 +82,7 @@ impl<'a> SideloadConfiguration<'a> {
             logger: &DefaultLogger,
             store_dir: std::env::current_dir().unwrap(),
             revoke_cert: false,
+            add_increased_memory_limit: false,
         }
     }
 
@@ -100,6 +103,11 @@ impl<'a> SideloadConfiguration<'a> {
 
     pub fn set_revoke_cert(mut self, revoke_cert: bool) -> Self {
         self.revoke_cert = revoke_cert;
+        self
+    }
+
+    pub fn set_add_increased_memory_limit(mut self, add: bool) -> Self {
+        self.add_increased_memory_limit = add;
         self
     }
 }

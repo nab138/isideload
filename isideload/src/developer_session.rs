@@ -4,9 +4,12 @@ use crate::{Error, obf};
 use icloud_auth::AppleAccount;
 use idevice::pretty_print_dictionary;
 use plist::{Date, Dictionary, Value};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+
+use std::str::FromStr;
 
 pub struct DeveloperSession {
     pub account: Arc<AppleAccount>,
@@ -53,7 +56,7 @@ impl DeveloperSession {
             .account
             .send_request(url, Some(request))
             .await
-            .map_err(|e| Error::ICloudError(e))?;
+            .map_err(Error::ICloudError)?;
 
         let status_code = response
             .get("resultCode")
@@ -644,6 +647,78 @@ impl DeveloperSession {
             _provisioning_profile_id: provisioning_profile_id,
             encoded_profile,
         })
+    }
+
+    // This is jank and I will do it better in the rewrite
+    pub async fn add_increased_memory_limit(
+        &self,
+        team: &DeveloperTeam,
+        app_id: &AppId,
+    ) -> Result<(), Error> {
+        let spd = self.account.spd.as_ref().unwrap();
+        let app_token = self
+            .account
+            .get_app_token("com.apple.gs.xcode.auth")
+            .await?;
+        let valid_anisette = self.account.get_anisette().await;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Content-Type",
+            HeaderValue::from_static("application/vnd.api+json"),
+        );
+        headers.insert(
+            "Accept",
+            HeaderValue::from_static("application/vnd.api+json"),
+        );
+        headers.insert("Accept-Language", HeaderValue::from_static("en-us"));
+        headers.insert("User-Agent", HeaderValue::from_str("Xcode").unwrap());
+        headers.insert(
+            HeaderName::from_str("X-Apple-I-Identity-Id").unwrap(),
+            HeaderValue::from_str(spd.get("adsid").unwrap().as_string().unwrap()).unwrap(),
+        );
+        headers.insert(
+            HeaderName::from_str("X-Apple-GS-Token").unwrap(),
+            HeaderValue::from_str(&app_token.auth_token).unwrap(),
+        );
+
+        for (k, v) in valid_anisette.generate_headers(false, true, true) {
+            headers.insert(
+                HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                HeaderValue::from_str(&v).unwrap(),
+            );
+        }
+
+        if let Ok(locale) = valid_anisette.get_header("x-apple-locale") {
+            headers.insert(
+                HeaderName::from_str("X-Apple-Locale").unwrap(),
+                HeaderValue::from_str(&locale).unwrap(),
+            );
+        }
+
+        let response = self
+                .account
+                .client
+                .patch(format!(
+                    "https://developerservices2.apple.com/services/v1/bundleIds/{}",
+                    app_id.app_id_id
+                ))
+                .headers(headers)
+                .body(format!(
+                "{{\"data\":{{\"relationships\":{{\"bundleIdCapabilities\":{{\"data\":[{{\"relationships\":{{\"capability\":{{\"data\":{{\"id\":\"INCREASED_MEMORY_LIMIT\",\"type\":\"capabilities\"}}}}}},\"type\":\"bundleIdCapabilities\",\"attributes\":{{\"settings\":[],\"enabled\":true}}}}]}}}},\"id\":\"{}\",\"attributes\":{{\"hasExclusiveManagedCapabilities\":false,\"teamId\":\"{}\",\"bundleType\":\"bundle\",\"identifier\":\"{}\",\"seedId\":\"{}\",\"name\":\"{}\"}},\"type\":\"bundleIds\"}}}}",
+                app_id.app_id_id, team.team_id, app_id.identifier, team.team_id, app_id.name
+            ))
+                .send()
+                .await
+                .map_err(|e| Error::ICloudError(icloud_auth::Error::ReqwestError(e)))?;
+
+        let _response = response
+            .text()
+            .await
+            .map_err(|e| Error::ICloudError(icloud_auth::Error::ReqwestError(e)))?;
+
+        //println!("Response: {:?}", response);
+        Ok(())
     }
 }
 

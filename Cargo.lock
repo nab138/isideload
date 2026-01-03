@@ -977,7 +977,7 @@ checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
 name = "isideload"
-version = "0.1.24"
+version = "0.1.25"
 dependencies = [
  "hex",
  "idevice",
@@ -985,6 +985,7 @@ dependencies = [
  "obfstr",
  "openssl",
  "plist",
+ "reqwest",
  "serde",
  "sha1",
  "thiserror 2.0.17",
@@ -1127,9 +1128,9 @@ dependencies = [
 
 [[package]]
 name = "nab138_icloud_auth"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9974d0c323b02010a93eba36368153b8ca3003ac3f7fdd810b025d5ade24edca"
+checksum = "69d9933f5f71168dd33e7e2b003cffd3a23116fd9a1df789525855bcf1d64173"
 dependencies = [
  "aes",
  "aes-gcm",
