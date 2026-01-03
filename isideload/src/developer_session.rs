@@ -1,7 +1,8 @@
 // This file was made using https://github.com/Dadoum/Sideloader as a reference for the apple private endpoints
 
 use crate::{Error, obf};
-use icloud_auth::{AppleAccount, Error as ICloudError};
+use icloud_auth::AppleAccount;
+use idevice::pretty_print_dictionary;
 use plist::{Date, Dictionary, Value};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -52,13 +53,7 @@ impl DeveloperSession {
             .account
             .send_request(url, Some(request))
             .await
-            .map_err(|e| {
-                if let ICloudError::AuthSrpWithMessage(code, message) = e {
-                    Error::DeveloperSession(code, format!("Developer request failed: {}", message))
-                } else {
-                    Error::Generic("Failed to send developer request".to_string())
-                }
-            })?;
+            .map_err(|e| Error::ICloudError(e))?;
 
         let status_code = response
             .get("resultCode")
@@ -256,16 +251,19 @@ impl DeveloperSession {
                 .and_then(|v| v.as_string())
                 .ok_or(Error::Parse("serialNumber".to_string()))?
                 .to_string();
-            let machine_name = dict
-                .get("machineName")
-                .and_then(|v| v.as_string())
-                .unwrap_or("")
-                .to_string();
-            let machine_id = dict
-                .get("machineId")
-                .and_then(|v| v.as_string())
-                .ok_or(Error::Parse("machineId".to_string()))?
-                .to_string();
+            let machine_name = match dict.get("machineName").and_then(|v| v.as_string()) {
+                Some(name) => name.to_string(),
+                None => "".to_string(),
+            };
+
+            let machine_id = match dict.get("machineId").and_then(|v| v.as_string()) {
+                Some(id) => Ok(id.to_string()),
+                None => Err(Error::Parse(format!(
+                    "machineId {:?}",
+                    pretty_print_dictionary(dict)
+                ))),
+            }?;
+
             let cert_content = dict
                 .get("certContent")
                 .and_then(|v| v.as_data())

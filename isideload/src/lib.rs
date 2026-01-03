@@ -34,6 +34,8 @@ pub enum Error {
     IdeviceError(#[from] IdeviceError),
     #[error(transparent)]
     ZSignError(#[from] ZSignError),
+    #[error(transparent)]
+    ICloudError(#[from] icloud_auth::Error),
 }
 
 pub trait SideloadLogger: Send + Sync {
