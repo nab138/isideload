@@ -2,6 +2,8 @@
 
 [![Build isideload](https://github.com/nab138/isideload/actions/workflows/build.yml/badge.svg)](https://github.com/nab138/isideload/actions/workflows/build.yml)
 
+**⚠️Notice: isideload is currently undergoing a major rewrite (see the `next` branch). Please do not open major pull requests at this time, they will not be reviewed. Please only open issues if the bug is important or the feature request is very small.⚠️**
+
 A Rust library for sideloading iOS applications using an Apple ID. Used in [CrossCode](https://github.com/nab138/CrossCode) and [iloader](https://github.com/nab138/iloader).
 
 This also serves as a rust library for accessing Apple's private developer APIs. See [`developer_session.rs`](isideload/src/developer_session.rs) for details.
