@@ -598,6 +598,7 @@ dependencies = [
  "plist",
  "plist-macro",
  "reqwest",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

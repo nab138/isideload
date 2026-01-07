@@ -19,3 +19,4 @@ idevice = { version = "0.1.50", optional = true }
 plist = "1.8.0"
 plist-macro = "0.1.0"
 reqwest = { version = "0.13.1", features = ["json", "gzip"] }
+thiserror = "2.0.17"
