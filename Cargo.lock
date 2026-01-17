@@ -529,9 +529,9 @@ dependencies = [
 
 [[package]]
 name = "idevice"
-version = "0.1.50"
+version = "0.1.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "effc7c8fe1bfa5051717c4dc20c3bcc4828b13009a6c95ff6fc8c3f8ccdf4d43"
+checksum = "d99be8d1969168237987908274fe41bcb2c8a1f9a37aa12fd15d5713acb9dd2b"
 dependencies = [
  "base64",
  "plist",
@@ -866,7 +866,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1027,7 +1027,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1619,7 +1619,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

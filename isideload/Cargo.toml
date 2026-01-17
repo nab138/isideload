@@ -15,7 +15,7 @@ default = ["install"]
 install = ["dep:idevice"]
 
 [dependencies]
-idevice = { version = "0.1.50", optional = true }
+idevice = { version = "0.1.51", optional = true }
 plist = "1.8.0"
 plist-macro = "0.1.0"
 reqwest = { version = "0.13.1", features = ["json", "gzip"] }
