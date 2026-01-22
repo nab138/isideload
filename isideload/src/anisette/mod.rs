@@ -1,6 +1,3 @@
+pub mod remote_v3;
+
 pub trait AnisetteProvider {}
-
-// tmp
-pub struct DefaultAnisetteProvider {}
-
-impl AnisetteProvider for DefaultAnisetteProvider {}
