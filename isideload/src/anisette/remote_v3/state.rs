@@ -37,7 +37,7 @@ where
     Ok(s.try_into().unwrap())
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AnisetteState {
     #[serde(
         serialize_with = "bin_serialize",

@@ -1,9 +1,16 @@
 use plist::Dictionary;
-use reqwest::{Certificate, ClientBuilder, header::HeaderValue};
+use plist_macro::pretty_print_dictionary;
+use reqwest::{
+    Certificate, ClientBuilder,
+    header::{HeaderMap, HeaderValue},
+};
 use rootcause::prelude::*;
 use tracing::debug;
 
-use crate::anisette::AnisetteClientInfo;
+use crate::{
+    anisette::AnisetteClientInfo,
+    util::plist::{PlistDataExtract, plist_to_xml_string},
+};
 
 const APPLE_ROOT: &[u8] = include_bytes!("./apple_root.der");
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
@@ -55,10 +62,59 @@ impl GrandSlam {
         Ok(self.url_bag.as_ref().unwrap())
     }
 
+    pub async fn get_url(&mut self, key: &str) -> Result<String, Report> {
+        let url_bag = self.get_url_bag().await?;
+        let url = url_bag
+            .get_string(key)
+            .context("Unable to find key in URL bag")?;
+        Ok(url)
+    }
+
+    pub fn get(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+        let builder = self.client.get(url).headers(self.base_headers()?);
+
+        Ok(builder)
+    }
+
     pub fn post(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
         let builder = self.client.post(url).headers(self.base_headers()?);
 
         Ok(builder)
+    }
+
+    pub async fn plist_request(
+        &self,
+        url: &str,
+        body: &Dictionary,
+        additional_headers: Option<HeaderMap>,
+    ) -> Result<Dictionary, Report> {
+        let resp = self
+            .post(url)?
+            .headers(additional_headers.unwrap_or_else(|| reqwest::header::HeaderMap::new()))
+            .body(plist_to_xml_string(body))
+            .send()
+            .await
+            .context("Failed to send grandslam request")?
+            .error_for_status()
+            .context("Received error response from grandslam")?
+            .text()
+            .await
+            .context("Failed to read grandslam response as text")?;
+
+        let dict: Dictionary = plist::from_bytes(resp.as_bytes())
+            .context("Failed to parse grandslam response plist")
+            .attach_with(|| resp.clone())?;
+
+        let response_plist = dict
+            .get("Response")
+            .and_then(|v| v.as_dictionary())
+            .cloned()
+            .ok_or_else(|| {
+                report!("grandslam response missing 'Response'")
+                    .attach(pretty_print_dictionary(&dict))
+            })?;
+
+        Ok(response_plist)
     }
 
     fn base_headers(&self) -> Result<reqwest::header::HeaderMap, Report> {
@@ -98,5 +154,33 @@ impl GrandSlam {
             .build()?;
 
         Ok(client)
+    }
+}
+
+pub trait GrandSlamErrorChecker {
+    fn check_grandslam_error(self) -> Result<Dictionary, Report<GrandSlamError>>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GrandSlamError {
+    #[error("Auth error {0}: {1}")]
+    AuthWithMessage(i64, String),
+}
+
+impl GrandSlamErrorChecker for Dictionary {
+    fn check_grandslam_error(self) -> Result<Self, Report<GrandSlamError>> {
+        let result = match self.get("Status") {
+            Some(plist::Value::Dictionary(d)) => d,
+            _ => &self,
+        };
+
+        if result.get_signed_integer("ec").unwrap_or(0) != 0 {
+            bail!(GrandSlamError::AuthWithMessage(
+                result.get_signed_integer("ec").unwrap_or(-1),
+                result.get_str("em").unwrap_or("Unknown error").to_string(),
+            ))
+        }
+
+        Ok(self)
     }
 }

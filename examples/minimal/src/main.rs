@@ -8,8 +8,9 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
+    isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -31,13 +32,12 @@ async fn main() {
     };
 
     let account = AppleAccountBuilder::new(apple_id)
-        .danger_debug(true)
-        .anisette(RemoteV3AnisetteProvider::default().set_serial_number("2".to_string()))
+        .anisette_provider(RemoteV3AnisetteProvider::default().set_serial_number("2".to_string()))
         .login(apple_password, get_2fa_code)
         .await;
 
     match account {
         Ok(_account) => println!("Successfully logged in to Apple ID"),
-        Err(e) => eprintln!("Failed to log in to Apple ID: {}", e),
+        Err(e) => eprintln!("Failed to log in to Apple ID: {:?}", e),
     }
 }
