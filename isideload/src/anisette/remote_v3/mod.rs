@@ -199,7 +199,7 @@ impl RemoteV3AnisetteProvider {
         gs: &mut GrandSlam,
         url: &str,
     ) -> Result<(), Report> {
-        info!("Starting provisioning");
+        debug!("Starting provisioning");
 
         let start_provisioning = gs.get_url("midStartProvisioning").await?;
         let end_provisioning = gs.get_url("midFinishProvisioning").await?;

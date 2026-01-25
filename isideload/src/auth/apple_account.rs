@@ -156,7 +156,7 @@ impl AppleAccount {
         password: &str,
         two_factor_callback: impl Fn() -> Option<String>,
     ) -> Result<(), Report> {
-        info!("Logging in to apple ID: {}", self.email);
+        info!("Logging in to Apple ID: {}", self.email);
         if self.debug {
             warn!("Debug mode enabled: this is a security risk!");
         }
@@ -184,55 +184,19 @@ impl AppleAccount {
                     return Ok(());
                 }
                 LoginState::NeedsDevice2FA => {
-                    debug!("Trusted device 2FA required");
-                    let request_code_url = self
-                        .grandslam_client
-                        .get_url("trustedDeviceSecondaryAuth")
-                        .await?;
-
-                    let submit_code_url = self.grandslam_client.get_url("validateCode").await?;
-
-                    self.grandslam_client
-                        .get(&request_code_url)?
-                        .headers(self.build_2fa_headers().await?)
-                        .send()
+                    self.trusted_device_2fa(&two_factor_callback)
                         .await
-                        .context("Failed to request trusted device 2fa")?
-                        .error_for_status()
-                        .context("Trusted device 2FA request failed")?;
-
-                    info!("Trusted device 2FA request sent");
-
-                    let code = two_factor_callback()
-                        .ok_or_else(|| report!("No 2FA code provided, aborting"))?;
-
-                    let res = self
-                        .grandslam_client
-                        .get(&submit_code_url)?
-                        .headers(self.build_2fa_headers().await?)
-                        .header("security-code", code)
-                        .send()
-                        .await
-                        .context("Failed to submit trusted device 2fa code")?
-                        .error_for_status()
-                        .context("Trusted device 2FA code submission failed")?
-                        .text()
-                        .await
-                        .context("Failed to read trusted device 2FA response text")?;
-
-                    let plist: Dictionary = plist::from_bytes(res.as_bytes())
-                        .context("Failed to parse trusted device response plist")
-                        .attach_with(|| res.clone())?;
-                    plist
-                        .check_grandslam_error()
-                        .context("Trusted device 2FA rejected")?;
-
+                        .context("Failed to complete trusted device 2FA")?;
                     debug!("Trusted device 2FA completed, need to login again");
                     self.login_state = LoginState::NeedsLogin;
                 }
                 LoginState::NeedsSMS2FA => {
                     info!("SMS 2FA required");
-                    todo!();
+                    self.sms_2fa(&two_factor_callback)
+                        .await
+                        .context("Failed to complete SMS 2FA")?;
+                    debug!("SMS 2FA completed, need to login again");
+                    self.login_state = LoginState::NeedsLogin;
                 }
                 LoginState::NeedsExtraStep(_) => todo!(),
                 LoginState::NeedsLogin => {
@@ -244,6 +208,108 @@ impl AppleAccount {
                 }
             }
         }
+    }
+
+    async fn trusted_device_2fa(
+        &mut self,
+        two_factor_callback: impl Fn() -> Option<String>,
+    ) -> Result<(), Report> {
+        debug!("Trusted device 2FA required");
+        let request_code_url = self
+            .grandslam_client
+            .get_url("trustedDeviceSecondaryAuth")
+            .await?;
+
+        let submit_code_url = self.grandslam_client.get_url("validateCode").await?;
+
+        self.grandslam_client
+            .get(&request_code_url)?
+            .headers(self.build_2fa_headers().await?)
+            .send()
+            .await
+            .context("Failed to request trusted device 2fa")?
+            .error_for_status()
+            .context("Trusted device 2FA request failed")?;
+
+        info!("Trusted device 2FA request sent");
+
+        let code =
+            two_factor_callback().ok_or_else(|| report!("No 2FA code provided, aborting"))?;
+
+        let res = self
+            .grandslam_client
+            .get(&submit_code_url)?
+            .headers(self.build_2fa_headers().await?)
+            .header("security-code", code)
+            .send()
+            .await
+            .context("Failed to submit trusted device 2fa code")?
+            .error_for_status()
+            .context("Trusted device 2FA code submission failed")?
+            .text()
+            .await
+            .context("Failed to read trusted device 2FA response text")?;
+
+        let plist: Dictionary = plist::from_bytes(res.as_bytes())
+            .context("Failed to parse trusted device response plist")
+            .attach_with(|| res.clone())?;
+        plist
+            .check_grandslam_error()
+            .context("Trusted device 2FA rejected")?;
+
+        Ok(())
+    }
+
+    async fn sms_2fa(
+        &mut self,
+        two_factor_callback: impl Fn() -> Option<String>,
+    ) -> Result<(), Report> {
+        debug!("SMS 2FA required");
+        let request_code_url = self.grandslam_client.get_url("secondaryAuth").await?;
+
+        self.grandslam_client
+            .get_sms(&request_code_url)?
+            .headers(self.build_2fa_headers().await?)
+            .send()
+            .await
+            .context("Failed to request SMS 2fa")?
+            .error_for_status()
+            .context("SMS 2FA request failed")?;
+
+        info!("SMS 2FA request sent");
+
+        let code =
+            two_factor_callback().ok_or_else(|| report!("No 2FA code provided, aborting"))?;
+
+        let body = serde_json::json!({
+            "securityCode": {
+                "code": code
+            },
+            "phoneNumber": {
+                "id": "1"
+            },
+            "mode": "sms"
+        });
+
+        let res = self
+            .grandslam_client
+            .post("https://gsa.apple.com/auth/verify/phone/securitycode")?
+            .headers(self.build_2fa_headers().await?)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .context("Failed to submit SMS 2fa code")?
+            .error_for_status()
+            .context("SMS 2FA code submission failed")?
+            .text()
+            .await
+            .context("Failed to read SMS 2FA response text")?;
+
+        debug!("SMS 2FA response: {}", res);
+
+        Ok(())
     }
 
     async fn build_2fa_headers(&mut self) -> Result<HeaderMap, Report> {
@@ -407,6 +473,7 @@ impl AppleAccount {
             return Ok(match s.as_str() {
                 "trustedDeviceSecondaryAuth" => LoginState::NeedsDevice2FA,
                 "secondaryAuth" => LoginState::NeedsSMS2FA,
+                "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
                 unknown => LoginState::NeedsExtraStep(unknown.to_string()),
             });
         }

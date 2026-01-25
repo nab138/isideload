@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::env;
 
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider, auth::apple_account::AppleAccountBuilder,
@@ -10,19 +10,19 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() {
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let args: Vec<String> = env::args().collect();
-    let _app_path = PathBuf::from(
-        args.get(1)
-            .expect("Please provide the path to the app to install"),
-    );
+    // let _app_path = PathBuf::from(
+    //     args.get(1)
+    //         .expect("Please provide the path to the app to install"),
+    // );
     let apple_id = args
-        .get(2)
+        .get(1)
         .expect("Please provide the Apple ID to use for installation");
-    let apple_password = args.get(3).expect("Please provide the Apple ID password");
+    let apple_password = args.get(2).expect("Please provide the Apple ID password");
 
     let get_2fa_code = || {
         let mut code = String::new();

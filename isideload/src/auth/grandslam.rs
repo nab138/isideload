@@ -41,7 +41,7 @@ impl GrandSlam {
             let resp = self
                 .client
                 .get(URL_BAG)
-                .headers(self.base_headers()?)
+                .headers(self.base_headers(false)?)
                 .send()
                 .await
                 .context("Failed to fetch URL Bag")?
@@ -71,13 +71,19 @@ impl GrandSlam {
     }
 
     pub fn get(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
-        let builder = self.client.get(url).headers(self.base_headers()?);
+        let builder = self.client.get(url).headers(self.base_headers(false)?);
+
+        Ok(builder)
+    }
+
+    pub fn get_sms(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+        let builder = self.client.get(url).headers(self.base_headers(true)?);
 
         Ok(builder)
     }
 
     pub fn post(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
-        let builder = self.client.post(url).headers(self.base_headers()?);
+        let builder = self.client.post(url).headers(self.base_headers(false)?);
 
         Ok(builder)
     }
@@ -117,10 +123,12 @@ impl GrandSlam {
         Ok(response_plist)
     }
 
-    fn base_headers(&self) -> Result<reqwest::header::HeaderMap, Report> {
+    fn base_headers(&self, sms: bool) -> Result<reqwest::header::HeaderMap, Report> {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Content-Type", HeaderValue::from_static("text/x-xml-plist"));
-        headers.insert("Accept", HeaderValue::from_static("text/x-xml-plist"));
+        if !sms {
+            headers.insert("Content-Type", HeaderValue::from_static("text/x-xml-plist"));
+            headers.insert("Accept", HeaderValue::from_static("text/x-xml-plist"));
+        }
         headers.insert(
             "X-Mme-Client-Info",
             HeaderValue::from_str(&self.client_info.client_info)?,
