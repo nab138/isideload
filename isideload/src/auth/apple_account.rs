@@ -471,7 +471,7 @@ impl AppleAccount {
 
         if let Some(plist::Value::String(s)) = status.get("au") {
             return Ok(match s.as_str() {
-                "trustedDeviceSecondaryAuth" => LoginState::NeedsDevice2FA,
+                "trustedDeviceSecondaryAuth" => LoginState::NeedsSMS2FA,
                 "secondaryAuth" => LoginState::NeedsSMS2FA,
                 "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
                 unknown => LoginState::NeedsExtraStep(unknown.to_string()),
