@@ -50,4 +50,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: target/release/examples/${{ matrix.artifact_name }}
+          path: target/debug/${{ matrix.artifact_name }}
