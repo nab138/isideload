@@ -1,19 +1,15 @@
 use crate::{
-    SideloadResult as Result,
     anisette::{AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
     auth::grandslam::GrandSlam,
 };
-use log::{info, warn};
-use reqwest::{Certificate, ClientBuilder};
-use thiserror_context::Context;
-
-const APPLE_ROOT: &[u8] = include_bytes!("./apple_root.der");
+use rootcause::prelude::*;
+use tracing::{info, warn};
 
 pub struct AppleAccount {
     pub email: String,
     pub spd: Option<plist::Dictionary>,
-    pub client: reqwest::Client,
     pub anisette: Box<dyn AnisetteProvider>,
+    pub grandslam_client: GrandSlam,
 }
 
 pub struct AppleAccountBuilder {
@@ -56,16 +52,20 @@ impl AppleAccountBuilder {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
-    pub async fn login<F>(self, _password: &str, _two_factor_callback: F) -> Result<AppleAccount>
+    pub async fn login<F>(
+        self,
+        password: &str,
+        two_factor_callback: F,
+    ) -> Result<AppleAccount, Report>
     where
-        F: Fn() -> Result<String>,
+        F: Fn() -> Option<String>,
     {
         let debug = self.debug.unwrap_or(false);
         let anisette = self
             .anisette
             .unwrap_or_else(|| Box::new(RemoteV3AnisetteProvider::default()));
 
-        AppleAccount::login(&self.email, debug, anisette).await
+        AppleAccount::login(&self.email, password, two_factor_callback, anisette, debug).await
     }
 }
 
@@ -83,43 +83,36 @@ impl AppleAccount {
     /// Reccomended to use the AppleAccountBuilder instead
     pub async fn login(
         email: &str,
+        password: &str,
+        two_factor_callback: impl Fn() -> Option<String>,
+        mut anisette: Box<dyn AnisetteProvider>,
         debug: bool,
-        anisette: Box<dyn AnisetteProvider>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Report> {
         info!("Logging in to apple ID: {}", email);
         if debug {
             warn!("Debug mode enabled: this is a security risk!");
         }
-        let client = Self::build_client(debug)?;
 
-        let mut gs = GrandSlam::new(&client);
-        gs.get_url_bag()
+        let client_info = anisette
+            .get_client_info()
             .await
-            .context("Failed to get URL bag from GrandSlam")?;
+            .context("Failed to get anisette client info")?;
+        let mut grandslam_client = GrandSlam::new(client_info, debug);
+        let url_bag = grandslam_client
+            .get_url_bag()
+            .await
+            .context("Failed to get URL bag for login")?;
+
+        let headers = anisette
+            .get_anisette_headers(&mut grandslam_client)
+            .await
+            .context("Failed to get anisette headers for login")?;
 
         Ok(AppleAccount {
             email: email.to_string(),
             spd: None,
-            client,
             anisette,
+            grandslam_client,
         })
-    }
-
-    /// Build a reqwest client with the Apple root certificate
-    ///
-    /// # Arguments
-    /// - `debug`: DANGER, If true, accept invalid certificates and enable verbose connection logging
-    /// # Errors
-    /// Returns an error if the reqwest client cannot be built
-    pub fn build_client(debug: bool) -> Result<reqwest::Client> {
-        let cert = Certificate::from_der(APPLE_ROOT)?;
-        let client = ClientBuilder::new()
-            .add_root_certificate(cert)
-            .http1_title_case_headers()
-            .danger_accept_invalid_certs(debug)
-            .connection_verbose(debug)
-            .build()?;
-
-        Ok(client)
     }
 }
