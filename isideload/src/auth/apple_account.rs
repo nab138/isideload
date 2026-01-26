@@ -9,7 +9,7 @@ use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
 use plist::Dictionary;
 use plist_macro::plist;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use sha2::{Digest, Sha256};
 use srp::{
@@ -294,6 +294,7 @@ impl AppleAccount {
         two_factor_callback: impl Fn() -> Option<String>,
     ) -> Result<(), Report> {
         debug!("SMS 2FA required");
+
         let request_code_url = self.grandslam_client.get_url("secondaryAuth").await?;
 
         self.grandslam_client
@@ -301,7 +302,7 @@ impl AppleAccount {
             .headers(self.build_2fa_headers().await?)
             .send()
             .await
-            .context("Failed to request SMS 2fa")?
+            .context("Failed to request SMS 2FA")?
             .error_for_status()
             .context("SMS 2FA request failed")?;
 
@@ -315,26 +316,33 @@ impl AppleAccount {
                 "code": code
             },
             "phoneNumber": {
-                "id": "1"
+                "id": 1
             },
             "mode": "sms"
         });
 
+        debug!("{}", body);
+
+        let mut headers = self.build_2fa_headers().await?;
+        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        headers.insert(
+            "Accept",
+            HeaderValue::from_static("application/json, text/javascript, */*; q=0.01"),
+        );
+
         let res = self
             .grandslam_client
             .post("https://gsa.apple.com/auth/verify/phone/securitycode")?
-            .headers(self.build_2fa_headers().await?)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
+            .headers(headers)
             .body(body.to_string())
             .send()
             .await
-            .context("Failed to submit SMS 2fa code")?
+            .context("Failed to submit SMS 2FA code")?
             .error_for_status()
             .context("SMS 2FA code submission failed")?
             .text()
             .await
-            .context("Failed to read SMS 2FA response text")?;
+            .context("Failed to read SMS 2FA response")?;
 
         debug!("SMS 2FA response: {}", res);
 
