@@ -133,15 +133,15 @@ impl GrandSlam {
             "X-Mme-Client-Info",
             HeaderValue::from_str(&self.client_info.client_info)?,
         );
-        headers.insert(
-            "User-Agent",
-            HeaderValue::from_str(&self.client_info.user_agent)?,
-        );
-        headers.insert("X-Xcode-Version", HeaderValue::from_static("14.2 (14C18)"));
-        headers.insert(
-            "X-Apple-App-Info",
-            HeaderValue::from_static("com.apple.gs.xcode.auth"),
-        );
+        // headers.insert(
+        //     "User-Agent",
+        //     HeaderValue::from_str(&self.client_info.user_agent)?,
+        // );
+        // headers.insert("X-Xcode-Version", HeaderValue::from_static("14.2 (14C18)"));
+        // headers.insert(
+        //     "X-Apple-App-Info",
+        //     HeaderValue::from_static("com.apple.gs.xcode.auth"),
+        // );
 
         Ok(headers)
     }

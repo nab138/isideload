@@ -72,7 +72,7 @@ impl AppleAccountBuilder {
         self
     }
 
-    /// Build the AppleAccount
+    /// Build the AppleAccount without logging in
     ///
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
@@ -118,6 +118,10 @@ impl AppleAccount {
     /// Build the apple account with the given email
     ///
     /// Reccomended to use the AppleAccountBuilder instead
+    /// # Arguments
+    /// - `email`: The Apple ID email address
+    /// - `anisette_provider`: The anisette provider to use
+    /// - `debug`: DANGER, If true, accept invalid certificates and enable verbose connection
     pub async fn new(
         email: &str,
         mut anisette_provider: Box<dyn AnisetteProvider>,
@@ -151,6 +155,12 @@ impl AppleAccount {
         })
     }
 
+    /// Log in to the Apple ID account
+    /// # Arguments
+    /// - `password`: The Apple ID password
+    /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
+    /// # Errors
+    /// Returns an error if the login fails
     pub async fn login(
         &mut self,
         password: &str,
@@ -216,6 +226,7 @@ impl AppleAccount {
         }
     }
 
+    /// Get the user's first and last name associated with the Apple ID
     pub fn get_name(&self) -> Result<(String, String), Report> {
         let spd = self
             .spd
@@ -269,6 +280,10 @@ impl AppleAccount {
             .grandslam_client
             .get(&submit_code_url)?
             .headers(self.build_2fa_headers().await?)
+            .header(
+                "X-Apple-I-MD-RINFO",
+                self.anisette_data.routing_info.clone(),
+            )
             .header("security-code", code)
             .send()
             .await
@@ -321,8 +336,6 @@ impl AppleAccount {
             "mode": "sms"
         });
 
-        debug!("{}", body);
-
         let mut headers = self.build_2fa_headers().await?;
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
         headers.insert(
@@ -337,14 +350,46 @@ impl AppleAccount {
             .body(body.to_string())
             .send()
             .await
-            .context("Failed to submit SMS 2FA code")?
-            .error_for_status()
-            .context("SMS 2FA code submission failed")?
-            .text()
-            .await
-            .context("Failed to read SMS 2FA response")?;
+            .context("Failed to submit SMS 2FA code")?;
 
-        debug!("SMS 2FA response: {}", res);
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res
+                .text()
+                .await
+                .context("Failed to read SMS 2FA error response text")?;
+            // try to parse as json, if it fails, just bail with the text
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(service_errors) = json.get("serviceErrors") {
+                    if let Some(first_error) = service_errors.as_array().and_then(|arr| arr.get(0))
+                    {
+                        let code = first_error
+                            .get("code")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("unknown");
+                        let title = first_error
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("No title provided");
+                        let message = first_error
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("No message provided");
+                        bail!(
+                            "SMS 2FA code submission failed (code {}): {} - {}",
+                            code,
+                            title,
+                            message
+                        );
+                    }
+                }
+            }
+            bail!(
+                "SMS 2FA code submission failed with http status {}: {}",
+                status,
+                text
+            );
+        };
 
         Ok(())
     }

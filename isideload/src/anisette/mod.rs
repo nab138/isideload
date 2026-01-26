@@ -19,7 +19,7 @@ pub struct AnisetteClientInfo {
 pub struct AnisetteData {
     machine_id: String,
     one_time_password: String,
-    routing_info: String,
+    pub routing_info: String,
     device_description: String,
     device_unique_identifier: String,
     local_user_id: String,
@@ -27,29 +27,29 @@ pub struct AnisetteData {
 
 impl AnisetteData {
     pub fn get_headers(&self, serial: String) -> HashMap<String, String> {
-        let dt: DateTime<Utc> = Utc::now().round_subsecs(0);
+        // let dt: DateTime<Utc> = Utc::now().round_subsecs(0);
 
         HashMap::from_iter(
             [
-                (
-                    "X-Apple-I-Client-Time".to_string(),
-                    dt.format("%+").to_string().replace("+00:00", "Z"),
-                ),
-                ("X-Apple-I-SRL-NO".to_string(), serial),
-                ("X-Apple-I-TimeZone".to_string(), "UTC".to_string()),
-                ("X-Apple-Locale".to_string(), "en_US".to_string()),
-                ("X-Apple-I-MD-RINFO".to_string(), self.routing_info.clone()),
-                ("X-Apple-I-MD-LU".to_string(), self.local_user_id.clone()),
+                // (
+                //     "X-Apple-I-Client-Time".to_string(),
+                //     dt.format("%+").to_string().replace("+00:00", "Z"),
+                // ),
+                // ("X-Apple-I-SRL-NO".to_string(), serial),
+                // ("X-Apple-I-TimeZone".to_string(), "UTC".to_string()),
+                // ("X-Apple-Locale".to_string(), "en_US".to_string()),
+                // ("X-Apple-I-MD-RINFO".to_string(), self.routing_info.clone()),
+                // ("X-Apple-I-MD-LU".to_string(), self.local_user_id.clone()),
                 (
                     "X-Mme-Device-Id".to_string(),
                     self.device_unique_identifier.clone(),
                 ),
                 ("X-Apple-I-MD".to_string(), self.one_time_password.clone()),
                 ("X-Apple-I-MD-M".to_string(), self.machine_id.clone()),
-                (
-                    "X-Mme-Client-Info".to_string(),
-                    self.device_description.clone(),
-                ),
+                // (
+                //     "X-Mme-Client-Info".to_string(),
+                //     self.device_description.clone(),
+                // ),
             ]
             .into_iter(),
         )

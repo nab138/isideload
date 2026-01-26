@@ -175,18 +175,18 @@ impl RemoteV3AnisetteProvider {
             "X-Apple-I-MD-LU",
             HeaderValue::from_str(&hex::encode(state.get_md_lu()))?,
         );
-        headers.insert(
-            "X-Apple-I-Client-Time",
-            HeaderValue::from_str(
-                &Utc::now()
-                    .round_subsecs(0)
-                    .format("%+")
-                    .to_string()
-                    .replace("+00:00", "Z"),
-            )?,
-        );
-        headers.insert("X-Apple-I-TimeZone", HeaderValue::from_static("UTC"));
-        headers.insert("X-Apple-Locale", HeaderValue::from_static("en_US"));
+        // headers.insert(
+        //     "X-Apple-I-Client-Time",
+        //     HeaderValue::from_str(
+        //         &Utc::now()
+        //             .round_subsecs(0)
+        //             .format("%+")
+        //             .to_string()
+        //             .replace("+00:00", "Z"),
+        //     )?,
+        // );
+        // headers.insert("X-Apple-I-TimeZone", HeaderValue::from_static("UTC"));
+        // headers.insert("X-Apple-Locale", HeaderValue::from_static("en_US"));
         headers.insert(
             "X-Mme-Device-Id",
             HeaderValue::from_str(&state.get_device_id())?,
