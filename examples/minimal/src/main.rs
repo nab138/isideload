@@ -37,7 +37,7 @@ async fn main() {
         .await;
 
     match account {
-        Ok(_account) => println!("Successfully logged in to Apple ID"),
+        Ok(a) => println!("Logged in. {}", a),
         Err(e) => eprintln!("Failed to log in to Apple ID: {:?}", e),
     }
 }

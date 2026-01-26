@@ -178,7 +178,7 @@ impl AppleAccount {
                     self.login_state
                 );
             }
-            match self.login_state {
+            match &self.login_state {
                 LoginState::LoggedIn => {
                     info!("Successfully logged in to Apple ID");
                     return Ok(());
@@ -198,7 +198,13 @@ impl AppleAccount {
                     debug!("SMS 2FA completed, need to login again");
                     self.login_state = LoginState::NeedsLogin;
                 }
-                LoginState::NeedsExtraStep(_) => todo!(),
+                LoginState::NeedsExtraStep(s) => {
+                    info!("Additional authentication step required: {}", s);
+                    if self.get_pet().is_err() {
+                        bail!("Additional authentication required: {}", s);
+                    }
+                    self.login_state = LoginState::LoggedIn;
+                }
                 LoginState::NeedsLogin => {
                     debug!("Logging in again...");
                     self.login_state = self
@@ -208,6 +214,29 @@ impl AppleAccount {
                 }
             }
         }
+    }
+
+    pub fn get_name(&self) -> Result<(String, String), Report> {
+        let spd = self
+            .spd
+            .as_ref()
+            .ok_or_else(|| report!("SPD not available, cannot get name"))?;
+
+        Ok((spd.get_string("fn")?, spd.get_string("ln")?))
+    }
+
+    fn get_pet(&self) -> Result<String, Report> {
+        let spd = self
+            .spd
+            .as_ref()
+            .ok_or_else(|| report!("SPD not available, cannot get pet"))?;
+
+        let pet = spd
+            .get_dict("t")?
+            .get_dict("com.apple.gs.idms.pet")?
+            .get_string("token")?;
+
+        Ok(pet)
     }
 
     async fn trusted_device_2fa(
@@ -471,7 +500,7 @@ impl AppleAccount {
 
         if let Some(plist::Value::String(s)) = status.get("au") {
             return Ok(match s.as_str() {
-                "trustedDeviceSecondaryAuth" => LoginState::NeedsSMS2FA,
+                "trustedDeviceSecondaryAuth" => LoginState::NeedsDevice2FA,
                 "secondaryAuth" => LoginState::NeedsSMS2FA,
                 "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
                 unknown => LoginState::NeedsExtraStep(unknown.to_string()),
@@ -498,5 +527,16 @@ impl AppleAccount {
             cbc::Decryptor::<aes::Aes256>::new_from_slices(&extra_data_key, extra_data_iv)?
                 .decrypt_padded_vec_mut::<Pkcs7>(&data)?,
         )
+    }
+}
+
+impl std::fmt::Display for AppleAccount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Apple Account: ")?;
+        match self.get_name() {
+            Ok((first, last)) => write!(f, "{} {} ", first, last),
+            Err(_) => Ok(()),
+        }?;
+        write!(f, "{} ({:?})", self.email, self.login_state)
     }
 }
