@@ -5,6 +5,7 @@ use rootcause::{
 
 pub mod anisette;
 pub mod auth;
+pub mod dev;
 pub mod util;
 
 #[derive(Debug, thiserror::Error)]
