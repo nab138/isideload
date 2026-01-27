@@ -3,7 +3,6 @@ use std::env;
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider, auth::apple_account::AppleAccountBuilder,
 };
-use plist_macro::pretty_print_dictionary;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -45,7 +44,7 @@ async fn main() {
     let app_token = account.unwrap().get_app_token("xcode.auth").await;
 
     match app_token {
-        Ok(t) => println!("App token: {}", pretty_print_dictionary(&t)),
+        Ok(t) => println!("App token acquired"),
         Err(e) => eprintln!("Failed to get app token: {:?}", e),
     }
 }
