@@ -7,6 +7,15 @@ pub mod anisette;
 pub mod auth;
 pub mod util;
 
+#[derive(Debug, thiserror::Error)]
+pub enum SideloadError {
+    #[error("Auth error {0}: {1}")]
+    AuthWithMessage(i64, String),
+
+    #[error("Plist parse error: {0}")]
+    PlistParseError(String),
+}
+
 struct ReqwestErrorFormatter;
 
 impl ContextFormatterHook<reqwest::Error> for ReqwestErrorFormatter {

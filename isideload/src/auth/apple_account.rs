@@ -3,10 +3,14 @@ use crate::{
     auth::grandslam::{GrandSlam, GrandSlamErrorChecker},
     util::plist::PlistDataExtract,
 };
-use aes::cipher::block_padding::Pkcs7;
+use aes::{
+    Aes256,
+    cipher::{block_padding::Pkcs7, consts::U16},
+};
+use aes_gcm::{AeadInPlace, AesGcm, KeyInit, Nonce};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use cbc::cipher::{BlockDecryptMut, KeyIvInit};
-use hmac::{Hmac, Mac};
+use hmac::Mac;
 use plist::Dictionary;
 use plist_macro::plist;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -563,12 +567,93 @@ impl AppleAccount {
         Ok(LoginState::LoggedIn)
     }
 
-    fn create_session_key(usr: &SrpClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
-        Ok(Hmac::<Sha256>::new_from_slice(&usr.key())?
-            .chain_update(name.as_bytes())
+    pub async fn get_app_token(&mut self, app: &str) -> Result<Dictionary, Report> {
+        let app = if app.contains("com.apple.gs.") {
+            app.to_string()
+        } else {
+            format!("com.apple.gs.{}", app)
+        };
+
+        let spd = self
+            .spd
+            .as_ref()
+            .ok_or_else(|| report!("SPD data not available, cannot get app token"))?;
+
+        let dsid = spd.get_str("adsid").context("Failed to get app token")?;
+        let auth_token = spd
+            .get_str("GsIdmsToken")
+            .context("Failed to get app token")?;
+        let session_key = spd.get_data("sk").context("Failed to get app token")?;
+        let c = spd.get_data("c").context("Failed to get app token")?;
+
+        let checksum = <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(session_key)
+            .unwrap()
+            .chain_update("apptokens".as_bytes())
+            .chain_update(dsid.as_bytes())
+            .chain_update(app.as_bytes())
             .finalize()
             .into_bytes()
-            .to_vec())
+            .to_vec();
+
+        let gs_service_url = self.grandslam_client.get_url("gsService").await?;
+        let cpd = self
+            .anisette_data
+            .get_client_provided_data(SERIAL_NUMBER.to_string());
+
+        let request = plist!(dict {
+            "Header": {
+                "Version": "1.0.1"
+            },
+            "Request": {
+                "app": [app],
+                "c": c,
+                "checksum": checksum,
+                "cpd": cpd,
+                "o": "apptokens",
+                "u": dsid,
+                "t": auth_token
+            }
+        });
+
+        let resp = self
+            .grandslam_client
+            .plist_request(&gs_service_url, &request, None)
+            .await
+            .context("Failed to send app token request")?
+            .check_grandslam_error()
+            .context("GrandSlam error during app token request")?;
+
+        let encrypted_token = resp
+            .get_data("et")
+            .context("Failed to get encrypted token")?;
+
+        let decrypted_token = Self::decrypt_gcm(&encrypted_token, &session_key)
+            .context("Failed to decrypt app token")?;
+
+        let token: Dictionary = plist::from_bytes(&decrypted_token)
+            .context("Failed to parse decrypted app token plist")?;
+
+        let status = token
+            .get_signed_integer("status-code")
+            .context("Failed to get status code from app token")?;
+        if status != 200 {
+            bail!("App token request failed with status code {}", status);
+        }
+        let token_dict = token
+            .get_dict("t")
+            .context("Failed to get token dictionary from app token")?;
+
+        Ok(token_dict.clone())
+    }
+
+    fn create_session_key(usr: &SrpClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
+        Ok(
+            <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(&usr.key())?
+                .chain_update(name.as_bytes())
+                .finalize()
+                .into_bytes()
+                .to_vec(),
+        )
     }
 
     fn decrypt_cbc(usr: &SrpClientVerifier<Sha256>, data: &[u8]) -> Result<Vec<u8>, Report> {
@@ -580,6 +665,43 @@ impl AppleAccount {
             cbc::Decryptor::<aes::Aes256>::new_from_slices(&extra_data_key, extra_data_iv)?
                 .decrypt_padded_vec_mut::<Pkcs7>(&data)?,
         )
+    }
+
+    fn decrypt_gcm(data: &[u8], key: &[u8]) -> Result<Vec<u8>, Report> {
+        if data.len() < 3 + 16 + 16 {
+            bail!(
+                "Encrypted token is too short to be valid (only {} bytes)",
+                data.len()
+            );
+        }
+        let header = &data[0..3];
+        if header != b"XYZ" {
+            bail!(
+                "Encrypted token is in an unknown format: {}",
+                String::from_utf8_lossy(header)
+            );
+        }
+        let iv = &data[3..19];
+        let ciphertext_and_tag = &data[19..];
+
+        if key.len() != 32 {
+            bail!("Session key is not the correct length: {} bytes", key.len());
+        }
+        if iv.len() != 16 {
+            bail!("IV is not the correct length: {} bytes", iv.len());
+        }
+
+        let key = aes_gcm::Key::<AesGcm<Aes256, U16>>::from_slice(key);
+        let cipher = AesGcm::<Aes256, U16>::new(key);
+        let nonce = Nonce::<U16>::from_slice(iv);
+
+        let mut buf = ciphertext_and_tag.to_vec();
+
+        cipher
+            .decrypt_in_place(nonce, header, &mut buf)
+            .map_err(|e| report!("Failed to decrypt gcm: {}", e))?;
+
+        Ok(buf)
     }
 }
 

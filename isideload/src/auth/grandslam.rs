@@ -8,6 +8,7 @@ use rootcause::prelude::*;
 use tracing::debug;
 
 use crate::{
+    SideloadError,
     anisette::AnisetteClientInfo,
     util::plist::{PlistDataExtract, plist_to_xml_string},
 };
@@ -166,24 +167,18 @@ impl GrandSlam {
 }
 
 pub trait GrandSlamErrorChecker {
-    fn check_grandslam_error(self) -> Result<Dictionary, Report<GrandSlamError>>;
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum GrandSlamError {
-    #[error("Auth error {0}: {1}")]
-    AuthWithMessage(i64, String),
+    fn check_grandslam_error(self) -> Result<Dictionary, Report<SideloadError>>;
 }
 
 impl GrandSlamErrorChecker for Dictionary {
-    fn check_grandslam_error(self) -> Result<Self, Report<GrandSlamError>> {
+    fn check_grandslam_error(self) -> Result<Self, Report<SideloadError>> {
         let result = match self.get("Status") {
             Some(plist::Value::Dictionary(d)) => d,
             _ => &self,
         };
 
         if result.get_signed_integer("ec").unwrap_or(0) != 0 {
-            bail!(GrandSlamError::AuthWithMessage(
+            bail!(SideloadError::AuthWithMessage(
                 result.get_signed_integer("ec").unwrap_or(-1),
                 result.get_str("em").unwrap_or("Unknown error").to_string(),
             ))
