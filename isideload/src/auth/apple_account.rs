@@ -280,10 +280,6 @@ impl AppleAccount {
             .grandslam_client
             .get(&submit_code_url)?
             .headers(self.build_2fa_headers().await?)
-            .header(
-                "X-Apple-I-MD-RINFO",
-                self.anisette_data.routing_info.clone(),
-            )
             .header("security-code", code)
             .send()
             .await
@@ -413,6 +409,10 @@ impl AppleAccount {
         headers.insert(
             "X-Apple-Identity-Token",
             reqwest::header::HeaderValue::from_str(&identity)?,
+        );
+        headers.insert(
+            "X-Apple-I-MD-RINFO",
+            reqwest::header::HeaderValue::from_str(&self.anisette_data.routing_info)?,
         );
 
         Ok(headers)
