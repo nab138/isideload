@@ -1,6 +1,9 @@
 use crate::{
-    anisette::{AnisetteData, AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
-    auth::grandslam::{GrandSlam, GrandSlamErrorChecker},
+    anisette::{AnisetteData, AnisetteProvider},
+    auth::{
+        builder::AppleAccountBuilder,
+        grandslam::{GrandSlam, GrandSlamErrorChecker},
+    },
     util::plist::PlistDataExtract,
 };
 use aes::{
@@ -22,8 +25,6 @@ use srp::{
 };
 use tracing::{debug, info, warn};
 
-const SERIAL_NUMBER: &str = "2";
-
 pub struct AppleAccount {
     pub email: String,
     pub spd: Option<plist::Dictionary>,
@@ -34,12 +35,6 @@ pub struct AppleAccount {
     debug: bool,
 }
 
-pub struct AppleAccountBuilder {
-    email: String,
-    debug: Option<bool>,
-    anisette_provider: Option<Box<dyn AnisetteProvider>>,
-}
-
 #[derive(Debug)]
 pub enum LoginState {
     LoggedIn,
@@ -47,67 +42,6 @@ pub enum LoginState {
     NeedsSMS2FA,
     NeedsExtraStep(String),
     NeedsLogin,
-}
-
-impl AppleAccountBuilder {
-    /// Create a new AppleAccountBuilder with the given email
-    ///
-    /// # Arguments
-    /// - `email`: The Apple ID email address
-    pub fn new(email: &str) -> Self {
-        Self {
-            email: email.to_string(),
-            debug: None,
-            anisette_provider: None,
-        }
-    }
-
-    /// DANGER Set whether to enable debug mode
-    ///
-    /// # Arguments
-    /// - `debug`: If true, accept invalid certificates and enable verbose connection logging
-    pub fn danger_debug(mut self, debug: bool) -> Self {
-        self.debug = Some(debug);
-        self
-    }
-
-    pub fn anisette_provider(mut self, anisette_provider: impl AnisetteProvider + 'static) -> Self {
-        self.anisette_provider = Some(Box::new(anisette_provider));
-        self
-    }
-
-    /// Build the AppleAccount without logging in
-    ///
-    /// # Errors
-    /// Returns an error if the reqwest client cannot be built
-    pub async fn build(self) -> Result<AppleAccount, Report> {
-        let debug = self.debug.unwrap_or(false);
-        let anisette_provider = self
-            .anisette_provider
-            .unwrap_or_else(|| Box::new(RemoteV3AnisetteProvider::default()));
-
-        AppleAccount::new(&self.email, anisette_provider, debug).await
-    }
-
-    /// Build the AppleAccount and log in
-    ///
-    /// # Arguments
-    /// - `password`: The Apple ID password
-    /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
-    /// # Errors
-    /// Returns an error if the reqwest client cannot be built
-    pub async fn login<F>(
-        self,
-        password: &str,
-        two_factor_callback: F,
-    ) -> Result<AppleAccount, Report>
-    where
-        F: Fn() -> Option<String>,
-    {
-        let mut account = self.build().await?;
-        account.login(password, two_factor_callback).await?;
-        Ok(account)
-    }
 }
 
 impl AppleAccount {
@@ -395,7 +329,7 @@ impl AppleAccount {
     }
 
     async fn build_2fa_headers(&mut self) -> Result<HeaderMap, Report> {
-        let mut headers = self.anisette_data.get_header_map(SERIAL_NUMBER.to_string());
+        let mut headers = self.anisette_data.get_header_map();
 
         let spd = self
             .spd
@@ -427,9 +361,7 @@ impl AppleAccount {
 
         debug!("GrandSlam service URL: {}", gs_service_url);
 
-        let cpd = self
-            .anisette_data
-            .get_client_provided_data(SERIAL_NUMBER.to_string());
+        let cpd = self.anisette_data.get_client_provided_data();
 
         let srp_client = SrpClient::<Sha256>::new(&G_2048);
         let a: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
@@ -567,7 +499,7 @@ impl AppleAccount {
         Ok(LoginState::LoggedIn)
     }
 
-    pub async fn get_app_token(&mut self, app: &str) -> Result<Dictionary, Report> {
+    pub async fn get_app_token(&mut self, app: &str) -> Result<AppToken, Report> {
         let app = if app.contains("com.apple.gs.") {
             app.to_string()
         } else {
@@ -596,16 +528,14 @@ impl AppleAccount {
             .to_vec();
 
         let gs_service_url = self.grandslam_client.get_url("gsService").await?;
-        let cpd = self
-            .anisette_data
-            .get_client_provided_data(SERIAL_NUMBER.to_string());
+        let cpd = self.anisette_data.get_client_provided_data();
 
         let request = plist!(dict {
             "Header": {
                 "Version": "1.0.1"
             },
             "Request": {
-                "app": [app],
+                "app": [app.clone()],
                 "c": c,
                 "checksum": checksum,
                 "cpd": cpd,
@@ -642,8 +572,24 @@ impl AppleAccount {
         let token_dict = token
             .get_dict("t")
             .context("Failed to get token dictionary from app token")?;
+        let app_token = token_dict
+            .get_dict(&app)
+            .context("Failed to get app token string")?;
 
-        Ok(token_dict.clone())
+        let app_token = AppToken {
+            token: app_token
+                .get_str("token")
+                .context("Failed to get app token string")?
+                .to_string(),
+            duration: app_token
+                .get_signed_integer("duration")
+                .context("Failed to get app token duration")? as u64,
+            expiry: app_token
+                .get_signed_integer("expiry")
+                .context("Failed to get app token expiry")? as u64,
+        };
+
+        Ok(app_token)
     }
 
     fn create_session_key(usr: &SrpClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
@@ -714,4 +660,11 @@ impl std::fmt::Display for AppleAccount {
         }?;
         write!(f, "{} ({:?})", self.email, self.login_state)
     }
+}
+
+#[derive(Debug)]
+pub struct AppToken {
+    pub token: String,
+    pub duration: u64,
+    pub expiry: u64,
 }

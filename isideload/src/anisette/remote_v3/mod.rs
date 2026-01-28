@@ -4,7 +4,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use base64::prelude::*;
-// use chrono::{SubsecRound, Utc};
 use plist_macro::plist;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rootcause::prelude::*;
@@ -110,9 +109,9 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
                     machine_id,
                     one_time_password,
                     routing_info,
-                    device_description: client_info,
+                    _device_description: client_info,
                     device_unique_identifier: state.get_device_id(),
-                    local_user_id: hex::encode(&state.get_md_lu()),
+                    _local_user_id: hex::encode(&state.get_md_lu()),
                 };
 
                 Ok(data)

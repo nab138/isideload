@@ -1,7 +1,6 @@
 pub mod remote_v3;
 
 use crate::auth::grandslam::GrandSlam;
-use chrono::{DateTime, SubsecRound, Utc};
 use plist::Dictionary;
 use plist_macro::plist;
 use reqwest::header::HeaderMap;
@@ -20,14 +19,15 @@ pub struct AnisetteData {
     machine_id: String,
     one_time_password: String,
     pub routing_info: String,
-    device_description: String,
+    _device_description: String,
     device_unique_identifier: String,
-    local_user_id: String,
+    _local_user_id: String,
 }
 
+// Some headers don't seem to be required. I guess not including them is technically more efficient soooo
 impl AnisetteData {
-    pub fn get_headers(&self, serial: String) -> HashMap<String, String> {
-        // let dt: DateTime<Utc> = Utc::now().round_subsecs(0);
+    pub fn get_headers(&self) -> HashMap<String, String> {
+        //let dt: DateTime<Utc> = Utc::now().round_subsecs(0);
 
         HashMap::from_iter(
             [
@@ -55,8 +55,8 @@ impl AnisetteData {
         )
     }
 
-    pub fn get_header_map(&self, serial: String) -> HeaderMap {
-        let headers_map = self.get_headers(serial);
+    pub fn get_header_map(&self) -> HeaderMap {
+        let headers_map = self.get_headers();
         let mut header_map = HeaderMap::new();
 
         for (key, value) in headers_map {
@@ -69,8 +69,8 @@ impl AnisetteData {
         header_map
     }
 
-    pub fn get_client_provided_data(&self, serial: String) -> Dictionary {
-        let headers = self.get_headers(serial);
+    pub fn get_client_provided_data(&self) -> Dictionary {
+        let headers = self.get_headers();
 
         let mut cpd = plist!(dict {
             "bootstrap": "true",

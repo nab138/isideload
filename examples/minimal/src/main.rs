@@ -1,16 +1,19 @@
 use std::env;
 
 use isideload::{
-    anisette::remote_v3::RemoteV3AnisetteProvider, auth::apple_account::AppleAccountBuilder,
+    anisette::remote_v3::RemoteV3AnisetteProvider, auth::apple_account::AppleAccount,
+    dev::developer_session::DeveloperSession,
 };
-use tracing::Level;
+
+use plist_macro::pretty_print_dictionary;
+use tracing::{Level, debug};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -31,7 +34,7 @@ async fn main() {
         Some(code.trim().to_string())
     };
 
-    let account = AppleAccountBuilder::new(apple_id)
+    let account = AppleAccount::builder(apple_id)
         .anisette_provider(RemoteV3AnisetteProvider::default().set_serial_number("2".to_string()))
         .login(apple_password, get_2fa_code)
         .await;
@@ -41,10 +44,16 @@ async fn main() {
         Err(e) => eprintln!("Failed to log in to Apple ID: {:?}", e),
     }
 
-    let app_token = account.unwrap().get_app_token("xcode.auth").await;
+    let mut account = account.unwrap();
 
-    match app_token {
-        Ok(t) => println!("App token acquired"),
-        Err(e) => eprintln!("Failed to get app token: {:?}", e),
-    }
+    let dev_session = DeveloperSession::from_account(&mut account)
+        .await
+        .expect("Failed to create developer session");
+
+    let res = dev_session
+        .list_teams()
+        .await
+        .expect("Failed to list teams");
+
+    println!("{}", pretty_print_dictionary(&res));
 }
