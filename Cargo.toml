@@ -2,3 +2,6 @@
 resolver = "2"
 members = ["examples/minimal","isideload"]
 default-members = ["isideload"]
+
+[patch.crates-io]
+rustls-platform-verifier = { git = "https://github.com/cstkingkey/rustls-platform-verifier", branch = "extra" }

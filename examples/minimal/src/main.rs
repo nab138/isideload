@@ -55,5 +55,5 @@ async fn main() {
         .await
         .expect("Failed to list teams");
 
-    println!("{}", pretty_print_dictionary(&res));
+    println!("{:#?}", res);
 }

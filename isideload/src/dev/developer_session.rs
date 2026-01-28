@@ -1,6 +1,7 @@
 use plist::Dictionary;
 use plist_macro::plist;
 use rootcause::prelude::*;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -9,7 +10,10 @@ use crate::{
         apple_account::{AppToken, AppleAccount},
         grandslam::GrandSlam,
     },
-    dev::device_type::DeveloperDeviceType,
+    dev::{
+        device_type::DeveloperDeviceType,
+        structures::{DeveloperTeam, ListTeamResponse},
+    },
     util::plist::{PlistDataExtract, plist_to_xml_string},
 };
 
@@ -58,7 +62,7 @@ impl<'a> DeveloperSession<'a> {
         &self,
         url: &str,
         body: Option<Dictionary>,
-    ) -> Result<Dictionary, Report> {
+    ) -> Result<String, Report> {
         let body = body.unwrap_or_else(|| Dictionary::new());
 
         let base = plist!(dict {
@@ -85,14 +89,22 @@ impl<'a> DeveloperSession<'a> {
             .await
             .context("Failed to read developer request response text")?;
 
-        let dict: Dictionary = plist::from_bytes(text.as_bytes())
-            .context("Failed to parse developer request plist")?;
+        // let dict: Dictionary = plist::from_bytes(text.as_bytes())
+        //     .context("Failed to parse developer request plist")?;
 
-        Ok(dict)
+        Ok(text)
     }
 
-    pub async fn list_teams(&self) -> Result<Dictionary, Report> {
-        self.send_developer_request(&DeveloperDeviceType::Any.dev_url("listTeams"), None)
-            .await
+    pub async fn list_teams(&self) -> Result<Vec<DeveloperTeam>, Report> {
+        let res = self
+            .send_developer_request(&DeveloperDeviceType::Any.dev_url("listTeams"), None)
+            .await?;
+
+        let response: ListTeamResponse = plist::from_bytes(res.as_bytes())
+            .context("Failed to parse list teams response plist")?;
+
+        debug!("List Teams Response Code: {:?}", response.result_code);
+
+        Ok(response.teams)
     }
 }
