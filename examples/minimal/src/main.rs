@@ -5,8 +5,7 @@ use isideload::{
     dev::developer_session::DeveloperSession,
 };
 
-use plist_macro::pretty_print_dictionary;
-use tracing::{Level, debug};
+use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
@@ -60,7 +59,7 @@ async fn main() {
         .expect("No developer teams available for this account");
 
     let res = dev_session
-        .list_devices(team, None)
+        .list_all_development_certs(team, None)
         .await
         .expect("Failed to list developer devices");
 

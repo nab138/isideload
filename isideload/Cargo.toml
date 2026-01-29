@@ -38,3 +38,4 @@ hmac = "0.12.1"
 cbc = { version = "0.1.2", features = ["std"] }
 aes = "0.8.4"
 aes-gcm = "0.10.3"
+serde_bytes = "0.11.19"

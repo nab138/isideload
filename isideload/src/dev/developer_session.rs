@@ -14,7 +14,8 @@ use crate::{
     dev::structures::{
         DeveloperDevice,
         DeveloperDeviceType::{self, *},
-        DeveloperTeam, ListDevicesResponse, ListTeamsResponse,
+        DeveloperTeam, DevelopmentCertificate, ListCertificatesResponse, ListDevicesResponse,
+        ListTeamsResponse,
     },
     util::plist::PlistDataExtract,
 };
@@ -135,6 +136,30 @@ impl<'a> DeveloperSession<'a> {
         };
 
         Ok(response.devices)
+    }
+
+    pub async fn list_all_development_certs(
+        &self,
+        team: &DeveloperTeam,
+        device_type: impl Into<Option<DeveloperDeviceType>>,
+    ) -> Result<Vec<DevelopmentCertificate>, Report> {
+        let body = plist!(dict {
+            "teamId": &team.team_id,
+        });
+
+        let response: ListCertificatesResponse = self
+            .send_developer_request(&dev_url("listAllDevelopmentCerts", device_type), body)
+            .await
+            .context("Failed to list development certificates")?;
+
+        if response.result_code != 0 {
+            warn!(
+                "Non-zero list development certs response code: {}",
+                response.result_code
+            )
+        };
+
+        Ok(response.certificates)
     }
 }
 

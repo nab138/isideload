@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde_bytes::ByteBuf;
 
 #[derive(Debug, Clone)]
 pub enum DeveloperDeviceType {
@@ -48,5 +49,22 @@ pub struct DeveloperDevice {
 #[serde(rename_all = "camelCase")]
 pub struct ListDevicesResponse {
     pub devices: Vec<DeveloperDevice>,
+    pub result_code: i64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DevelopmentCertificate {
+    pub name: String,
+    pub certificate_id: String,
+    pub serial_number: Option<String>,
+    pub machine_id: Option<String>,
+    pub cert_content: Option<ByteBuf>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ListCertificatesResponse {
+    pub certificates: Vec<DevelopmentCertificate>,
     pub result_code: i64,
 }
