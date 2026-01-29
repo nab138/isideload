@@ -1,14 +1,6 @@
 use plist::Dictionary;
-use plist_macro::{plist_to_xml_bytes, plist_value_to_xml_bytes, pretty_print_dictionary};
+use plist_macro::pretty_print_dictionary;
 use rootcause::prelude::*;
-
-pub fn plist_to_xml_string(p: &Dictionary) -> String {
-    String::from_utf8(plist_to_xml_bytes(p)).unwrap()
-}
-
-pub fn plist_value_to_xml_string(p: &plist::Value) -> String {
-    String::from_utf8(plist_value_to_xml_bytes(p)).unwrap()
-}
 
 pub struct SensitivePlistAttachment {
     pub plist: Dictionary,

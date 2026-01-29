@@ -50,10 +50,19 @@ async fn main() {
         .await
         .expect("Failed to create developer session");
 
-    let res = dev_session
+    let teams = dev_session
         .list_teams()
         .await
         .expect("Failed to list teams");
+
+    let team = teams
+        .get(0)
+        .expect("No developer teams available for this account");
+
+    let res = dev_session
+        .list_devices(team, None)
+        .await
+        .expect("Failed to list developer devices");
 
     println!("{:#?}", res);
 }

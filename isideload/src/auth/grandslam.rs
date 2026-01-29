@@ -1,4 +1,5 @@
 use plist::Dictionary;
+use plist_macro::plist_to_xml_string;
 use plist_macro::pretty_print_dictionary;
 use reqwest::{
     Certificate, ClientBuilder,
@@ -7,11 +8,7 @@ use reqwest::{
 use rootcause::prelude::*;
 use tracing::debug;
 
-use crate::{
-    SideloadError,
-    anisette::AnisetteClientInfo,
-    util::plist::{PlistDataExtract, plist_to_xml_string},
-};
+use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
 
 const APPLE_ROOT: &[u8] = include_bytes!("./apple_root.der");
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
