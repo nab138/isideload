@@ -1,12 +1,9 @@
-use crate::{
-    dev::{
-        developer_session::DeveloperSession,
-        device_type::{DeveloperDeviceType, dev_url},
-        teams::DeveloperTeam,
-    },
-    util::plist::SensitivePlistAttachment,
+use crate::dev::{
+    app_ids::AppId,
+    developer_session::DeveloperSession,
+    device_type::{DeveloperDeviceType, dev_url},
+    teams::DeveloperTeam,
 };
-use plist::{Date, Dictionary, Value};
 use plist_macro::plist;
 use rootcause::prelude::*;
 use serde::Deserialize;
@@ -69,6 +66,30 @@ pub trait AppGroupsApi {
             .context("Failed to add developer app group")?;
 
         Ok(app_group)
+    }
+
+    async fn assign_app_group(
+        &self,
+        team: &DeveloperTeam,
+        app_group: &AppGroup,
+        app_id: &AppId,
+        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
+    ) -> Result<(), Report> {
+        let body = plist!(dict {
+            "teamId": &team.team_id,
+            "applicationGroups": &app_group.application_group,
+            "appIdId": &app_id.app_id_id,
+        });
+
+        self.developer_session()
+            .send_dev_request_no_response(
+                &dev_url("assignApplicationGroupToAppId", device_type),
+                body,
+            )
+            .await
+            .context("Failed to assign developer app group")?;
+
+        Ok(())
     }
 }
 

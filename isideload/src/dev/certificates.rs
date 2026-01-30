@@ -3,10 +3,10 @@ use crate::dev::{
     device_type::{DeveloperDeviceType, dev_url},
     teams::DeveloperTeam,
 };
+use plist::Data;
 use plist_macro::plist;
 use rootcause::prelude::*;
 use serde::Deserialize;
-use serde_bytes::ByteBuf;
 use uuid::Uuid;
 
 #[derive(Deserialize, Clone)]
@@ -16,7 +16,7 @@ pub struct DevelopmentCertificate {
     pub certificate_id: Option<String>,
     pub serial_number: Option<String>,
     pub machine_id: Option<String>,
-    pub cert_content: Option<ByteBuf>,
+    pub cert_content: Option<Data>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -38,7 +38,7 @@ impl std::fmt::Debug for DevelopmentCertificate {
                 &self
                     .cert_content
                     .as_ref()
-                    .map(|c| format!("Some([{} bytes])", c.len()))
+                    .map(|c| format!("Some([{} bytes])", c.as_ref().len()))
                     .unwrap_or("None".to_string()),
             )
             .finish()
