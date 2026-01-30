@@ -3,7 +3,7 @@ use std::env;
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::AppleAccount,
-    dev::developer_session::{AppIdsApi, DeveloperSession, TeamsApi},
+    dev::developer_session::{AppGroupsApi, DeveloperSession, TeamsApi},
 };
 
 use tracing::Level;
@@ -60,7 +60,7 @@ async fn main() {
         .expect("No developer teams available for this account");
 
     let res = dev_session
-        .list_app_ids(team, None)
+        .add_app_group(team, "Example", "group.me.nabdev.example.59AV98CNR7", None)
         .await
         .expect("Failed to add appid");
 
