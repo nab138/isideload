@@ -1,8 +1,9 @@
 use std::env;
 
 use isideload::{
-    anisette::remote_v3::RemoteV3AnisetteProvider, auth::apple_account::AppleAccount,
-    dev::developer_session::DeveloperSession,
+    anisette::remote_v3::RemoteV3AnisetteProvider,
+    auth::apple_account::AppleAccount,
+    dev::developer_session::{AppIdsApi, DeveloperSession, TeamsApi},
 };
 
 use tracing::Level;
@@ -59,9 +60,9 @@ async fn main() {
         .expect("No developer teams available for this account");
 
     let res = dev_session
-        .revoke_development_cert(team, "2655CFC31A258B1B4D7D9FC22E23AEC3", None)
+        .list_app_ids(team, None)
         .await
-        .expect("Failed to list developer devices");
+        .expect("Failed to add appid");
 
     println!("{:?}", res);
 }
