@@ -84,6 +84,48 @@ pub trait AppIdsApi {
 
         Ok(app_ids)
     }
+
+    async fn update_app_id(
+        &self,
+        team: &DeveloperTeam,
+        app_id: &AppId,
+        features: &Dictionary,
+        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
+    ) -> Result<AppId, Report> {
+        let mut body = plist!(dict {
+            "teamId": &team.team_id,
+            "appIdId": &app_id.app_id_id
+        });
+
+        for (key, value) in features {
+            body.insert(key.clone(), value.clone());
+        }
+
+        Ok(self
+            .developer_session()
+            .send_dev_request(&dev_url("updateAppId", device_type), body, "appId")
+            .await
+            .context("Failed to update developer app ID")?)
+    }
+
+    async fn delete_app_id(
+        &self,
+        team: &DeveloperTeam,
+        app_id: &AppId,
+        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
+    ) -> Result<(), Report> {
+        let body = plist!(dict {
+            "teamId": &team.team_id,
+            "appIdId": &app_id.app_id_id,
+        });
+
+        self.developer_session()
+            .send_dev_request_no_response(&dev_url("deleteAppId", device_type), body)
+            .await
+            .context("Failed to delete developer app ID")?;
+
+        Ok(())
+    }
 }
 
 impl AppIdsApi for DeveloperSession<'_> {
