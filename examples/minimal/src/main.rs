@@ -59,9 +59,9 @@ async fn main() {
         .expect("No developer teams available for this account");
 
     let res = dev_session
-        .list_all_development_certs(team, None)
+        .list_devices(team, None)
         .await
         .expect("Failed to list developer devices");
 
-    println!("{:#?}", res);
+    println!("{:?}", res);
 }

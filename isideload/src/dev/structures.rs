@@ -34,6 +34,7 @@ pub struct DeveloperTeam {
 pub struct ListTeamsResponse {
     pub teams: Vec<DeveloperTeam>,
     pub result_code: i64,
+    pub result_string: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -45,14 +46,7 @@ pub struct DeveloperDevice {
     pub status: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ListDevicesResponse {
-    pub devices: Vec<DeveloperDevice>,
-    pub result_code: i64,
-}
-
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DevelopmentCertificate {
     pub name: String,
@@ -62,9 +56,22 @@ pub struct DevelopmentCertificate {
     pub cert_content: Option<ByteBuf>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ListCertificatesResponse {
-    pub certificates: Vec<DevelopmentCertificate>,
-    pub result_code: i64,
+// the automatic debug implementation spams the console with the cert content bytes
+impl std::fmt::Debug for DevelopmentCertificate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DevelopmentCertificate")
+            .field("name", &self.name)
+            .field("certificate_id", &self.certificate_id)
+            .field("serial_number", &self.serial_number)
+            .field("machine_id", &self.machine_id)
+            .field(
+                "cert_content",
+                &self
+                    .cert_content
+                    .as_ref()
+                    .map(|c| format!("Some([{} bytes])", c.len()))
+                    .unwrap_or("None".to_string()),
+            )
+            .finish()
+    }
 }

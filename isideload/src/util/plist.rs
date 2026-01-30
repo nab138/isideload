@@ -1,6 +1,8 @@
 use plist::Dictionary;
 use plist_macro::pretty_print_dictionary;
 use rootcause::prelude::*;
+use serde::de::DeserializeOwned;
+use tracing::error;
 
 pub struct SensitivePlistAttachment {
     pub plist: Dictionary,
@@ -9,6 +11,18 @@ pub struct SensitivePlistAttachment {
 impl SensitivePlistAttachment {
     pub fn new(plist: Dictionary) -> Self {
         SensitivePlistAttachment { plist }
+    }
+
+    pub fn from_text(text: &str) -> Self {
+        let dict: Result<Dictionary, _> = plist::from_bytes(text.as_bytes());
+        if let Err(e) = &dict {
+            error!(
+                "Failed to parse plist text for sensitive attachment, returning empty plist: {:?}",
+                e
+            );
+            return SensitivePlistAttachment::new(Dictionary::new());
+        }
+        SensitivePlistAttachment::new(dict.unwrap())
     }
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,6 +55,7 @@ pub trait PlistDataExtract {
     fn get_string(&self, key: &str) -> Result<String, Report>;
     fn get_signed_integer(&self, key: &str) -> Result<i64, Report>;
     fn get_dict(&self, key: &str) -> Result<&Dictionary, Report>;
+    fn get_struct<T: DeserializeOwned>(&self, key: &str) -> Result<T, Report>;
 }
 
 impl PlistDataExtract for Dictionary {
@@ -84,5 +99,25 @@ impl PlistDataExtract for Dictionary {
                 report!("Plist missing dictionary for key '{}'", key)
                     .attach(SensitivePlistAttachment::new(self.clone()))
             })
+    }
+
+    fn get_struct<T: DeserializeOwned>(&self, key: &str) -> Result<T, Report> {
+        let dict = self.get(key);
+        if dict.is_none() {
+            return Err(report!("Plist missing dictionary for key '{}'", key)
+                .attach(SensitivePlistAttachment::new(self.clone())));
+        }
+        let dict = dict.unwrap();
+        let struct_data: T = plist::from_value(dict).map_err(|e| {
+            report!(
+                "Failed to deserialize plist struct for key '{}': {:?}",
+                key,
+                e
+            )
+            .attach(SensitivePlistAttachment::new(
+                dict.as_dictionary().cloned().unwrap_or_default(),
+            ))
+        })?;
+        Ok(struct_data)
     }
 }

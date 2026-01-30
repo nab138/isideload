@@ -2,7 +2,7 @@ use plist::Dictionary;
 use plist_macro::{plist, plist_to_xml_string};
 use rootcause::prelude::*;
 use serde::de::DeserializeOwned;
-use tracing::warn;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -12,10 +12,8 @@ use crate::{
         grandslam::GrandSlam,
     },
     dev::structures::{
-        DeveloperDevice,
         DeveloperDeviceType::{self, *},
-        DeveloperTeam, DevelopmentCertificate, ListCertificatesResponse, ListDevicesResponse,
-        ListTeamsResponse,
+        *,
     },
     util::plist::PlistDataExtract,
 };
@@ -64,6 +62,7 @@ impl<'a> DeveloperSession<'a> {
     pub async fn send_developer_request<T: DeserializeOwned>(
         &self,
         url: &str,
+        result_key: &str,
         body: impl Into<Option<Dictionary>>,
     ) -> Result<T, Report> {
         let body = body.into().unwrap_or_else(|| Dictionary::new());
@@ -92,26 +91,51 @@ impl<'a> DeveloperSession<'a> {
             .await
             .context("Failed to read developer request response text")?;
 
-        let dict: T = plist::from_bytes(text.as_bytes())
+        let dict: Dictionary = plist::from_bytes(text.as_bytes())
             .context("Failed to parse developer request plist")?;
 
-        Ok(dict)
+        // All this error handling is here to ensure that:
+        // 1. We always warn/log errors from the server even if it returns the expected data
+        // 2. We return server errors if the expected data is missing
+        // 3. We return parsing errors if there is no server error but the expected data is missing
+        let response_code = dict.get("resultCode").and_then(|v| v.as_signed_integer());
+        let mut server_error: Option<String> = None;
+        if let Some(code) = response_code {
+            if code != 0 {
+                server_error = Some(format!(
+                    "{} Code {}: {}",
+                    dict.get("userString")
+                        .and_then(|v| v.as_string())
+                        .unwrap_or("Developer request failed."),
+                    code,
+                    dict.get("resultString")
+                        .and_then(|v| v.as_string())
+                        .unwrap_or("No error message given.")
+                ));
+                error!(server_error);
+            }
+        } else {
+            warn!("No resultCode in developer request response");
+        }
+
+        let result: Result<T, _> = dict.get_struct(result_key);
+
+        if let Err(_) = &result {
+            if let Some(err) = server_error {
+                bail!(err);
+            }
+        }
+
+        Ok(result.context("Failed to extract developer request result")?)
     }
 
     pub async fn list_teams(&self) -> Result<Vec<DeveloperTeam>, Report> {
-        let response: ListTeamsResponse = self
-            .send_developer_request(&dev_url("listTeams", Any), None)
+        let response: Vec<DeveloperTeam> = self
+            .send_developer_request(&dev_url("listTeams", Any), "teams", None)
             .await
             .context("Failed to list developer teams")?;
 
-        if response.result_code != 0 {
-            warn!(
-                "Non-zero list teams response code: {}",
-                response.result_code
-            )
-        };
-
-        Ok(response.teams)
+        Ok(response)
     }
 
     pub async fn list_devices(
@@ -123,19 +147,33 @@ impl<'a> DeveloperSession<'a> {
             "teamId": &team.team_id,
         });
 
-        let response: ListDevicesResponse = self
-            .send_developer_request(&dev_url("listDevices", device_type), body)
+        let devices: Vec<DeveloperDevice> = self
+            .send_developer_request(&dev_url("listDevices", device_type), "devices", body)
             .await
             .context("Failed to list developer devices")?;
 
-        if response.result_code != 0 {
-            warn!(
-                "Non-zero list devices response code: {}",
-                response.result_code
-            )
-        };
+        Ok(devices)
+    }
 
-        Ok(response.devices)
+    pub async fn add_device(
+        &self,
+        team: &DeveloperTeam,
+        name: &str,
+        udid: &str,
+        device_type: impl Into<Option<DeveloperDeviceType>>,
+    ) -> Result<DeveloperDevice, Report> {
+        let body = plist!(dict {
+            "teamId": &team.team_id,
+            "name": name,
+            "deviceNumber": udid,
+        });
+
+        let device: DeveloperDevice = self
+            .send_developer_request(&dev_url("addDevice", device_type), "device", body)
+            .await
+            .context("Failed to add developer device")?;
+
+        Ok(device)
     }
 
     pub async fn list_all_development_certs(
@@ -147,19 +185,16 @@ impl<'a> DeveloperSession<'a> {
             "teamId": &team.team_id,
         });
 
-        let response: ListCertificatesResponse = self
-            .send_developer_request(&dev_url("listAllDevelopmentCerts", device_type), body)
+        let certs: Vec<DevelopmentCertificate> = self
+            .send_developer_request(
+                &dev_url("listAllDevelopmentCerts", device_type),
+                "certificates",
+                body,
+            )
             .await
             .context("Failed to list development certificates")?;
 
-        if response.result_code != 0 {
-            warn!(
-                "Non-zero list development certs response code: {}",
-                response.result_code
-            )
-        };
-
-        Ok(response.certificates)
+        Ok(certs)
     }
 }
 
