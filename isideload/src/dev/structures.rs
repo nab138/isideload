@@ -1,3 +1,4 @@
+use plist::{Date, Dictionary};
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 
@@ -40,8 +41,8 @@ pub struct ListTeamsResponse {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DeveloperDevice {
-    pub name: String,
-    pub device_id: String,
+    pub name: Option<String>,
+    pub device_id: Option<String>,
     pub device_number: String,
     pub status: Option<String>,
 }
@@ -49,8 +50,8 @@ pub struct DeveloperDevice {
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DevelopmentCertificate {
-    pub name: String,
-    pub certificate_id: String,
+    pub name: Option<String>,
+    pub certificate_id: Option<String>,
     pub serial_number: Option<String>,
     pub machine_id: Option<String>,
     pub cert_content: Option<ByteBuf>,
@@ -74,4 +75,28 @@ impl std::fmt::Debug for DevelopmentCertificate {
             )
             .finish()
     }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CertRequest {
+    pub cert_request_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppId {
+    pub app_id_id: String,
+    pub identifier: String,
+    pub name: String,
+    pub features: Option<Dictionary>,
+    pub expiration_date: Option<Date>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAppIdsResponse {
+    pub app_ids: Vec<AppId>,
+    pub max_quantity: Option<u64>,
+    pub available_quantity: Option<u64>,
 }

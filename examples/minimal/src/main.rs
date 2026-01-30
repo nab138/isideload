@@ -40,7 +40,7 @@ async fn main() {
 
     match &account {
         Ok(a) => println!("Logged in. {}", a),
-        Err(e) => eprintln!("Failed to log in to Apple ID: {:?}", e),
+        Err(e) => panic!("Failed to log in to Apple ID: {:?}", e),
     }
 
     let mut account = account.unwrap();
@@ -59,7 +59,7 @@ async fn main() {
         .expect("No developer teams available for this account");
 
     let res = dev_session
-        .list_devices(team, None)
+        .revoke_development_cert(team, "2655CFC31A258B1B4D7D9FC22E23AEC3", None)
         .await
         .expect("Failed to list developer devices");
 
