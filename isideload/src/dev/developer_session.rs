@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use plist::Dictionary;
 use plist_macro::{plist, plist_to_xml_string};
 use rootcause::prelude::*;
@@ -6,7 +8,7 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::{
-    anisette::AnisetteData,
+    anisette::{AnisetteData, AnisetteProvider},
     auth::{
         apple_account::{AppToken, AppleAccount},
         grandslam::GrandSlam,
@@ -25,7 +27,7 @@ pub struct DeveloperSession<'a> {
     token: AppToken,
     adsid: String,
     client: &'a GrandSlam,
-    anisette_data: &'a AnisetteData,
+    anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
 }
 
 impl<'a> DeveloperSession<'a> {
@@ -33,13 +35,13 @@ impl<'a> DeveloperSession<'a> {
         token: AppToken,
         adsid: String,
         client: &'a GrandSlam,
-        anisette_data: &'a AnisetteData,
+        anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
     ) -> Self {
         DeveloperSession {
             token,
             adsid,
             client,
-            anisette_data,
+            anisette_provider,
         }
     }
 

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use crate::{
     anisette::{AnisetteData, AnisetteProvider},
     auth::{
@@ -28,7 +30,7 @@ use tracing::{debug, info, warn};
 pub struct AppleAccount {
     pub email: String,
     pub spd: Option<plist::Dictionary>,
-    pub anisette_provider: Box<dyn AnisetteProvider>,
+    pub anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
     pub anisette_data: AnisetteData,
     pub grandslam_client: GrandSlam,
     login_state: LoginState,
@@ -62,7 +64,7 @@ impl AppleAccount {
     /// - `debug`: DANGER, If true, accept invalid certificates and enable verbose connection
     pub async fn new(
         email: &str,
-        mut anisette_provider: Box<dyn AnisetteProvider>,
+        mut anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
         debug: bool,
     ) -> Result<Self, Report> {
         info!("Initializing apple account");
@@ -71,6 +73,8 @@ impl AppleAccount {
         }
 
         let client_info = anisette_provider
+            .lock()
+            .unwrap()
             .get_client_info()
             .await
             .context("Failed to get anisette client info")?;
