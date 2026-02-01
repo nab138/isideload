@@ -17,7 +17,7 @@ fn bin_serialize_opt<S>(x: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    x.clone().map(|i| Data::new(i)).serialize(s)
+    x.clone().map(Data::new).serialize(s)
 }
 
 fn bin_deserialize_opt<'de, D>(d: D) -> Result<Option<Vec<u8>>, D::Error>
@@ -71,7 +71,7 @@ impl AnisetteState {
 
     pub fn get_md_lu(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        hasher.update(&self.keychain_identifier);
+        hasher.update(self.keychain_identifier);
         hasher.finalize().into()
     }
 

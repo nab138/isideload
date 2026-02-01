@@ -52,8 +52,7 @@ impl AnisetteData {
                 //     "X-Mme-Client-Info".to_string(),
                 //     self.device_description.clone(),
                 // ),
-            ]
-            .into_iter(),
+            ],
         )
     }
 
@@ -125,11 +124,10 @@ impl AnisetteDataGenerator {
         &mut self,
         gs: Arc<GrandSlam>,
     ) -> Result<Arc<AnisetteData>, Report> {
-        if let Some(data) = &self.data {
-            if !data.needs_refresh() {
+        if let Some(data) = &self.data
+            && !data.needs_refresh() {
                 return Ok(data.clone());
             }
-        }
 
         // trying to avoid locking as write unless necessary to promote concurrency
         let provider = self.provider.read().await;

@@ -105,7 +105,7 @@ impl GrandSlam {
     ) -> Result<Dictionary, Report> {
         let resp = self
             .post(url)?
-            .headers(additional_headers.unwrap_or_else(|| reqwest::header::HeaderMap::new()))
+            .headers(additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new))
             .body(plist_to_xml_string(body))
             .send()
             .await

@@ -69,7 +69,7 @@ impl DeveloperSession {
         url: &str,
         body: impl Into<Option<Dictionary>>,
     ) -> Result<(Dictionary, Option<String>), Report> {
-        let body = body.into().unwrap_or_else(|| Dictionary::new());
+        let body = body.into().unwrap_or_else(Dictionary::new);
 
         let base = plist!(dict {
             "clientId": "XABBG36SBA",
@@ -147,11 +147,10 @@ impl DeveloperSession {
 
         let result: Result<T, _> = dict.get_struct(response_key);
 
-        if let Err(_) = &result {
-            if let Some(err) = server_error {
+        if result.is_err()
+            && let Some(err) = server_error {
                 bail!(err);
             }
-        }
 
         Ok(result.context("Failed to extract developer request result")?)
     }

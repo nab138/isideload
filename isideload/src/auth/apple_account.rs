@@ -300,9 +300,9 @@ impl AppleAccount {
                 .await
                 .context("Failed to read SMS 2FA error response text")?;
             // try to parse as json, if it fails, just bail with the text
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(service_errors) = json.get("serviceErrors") {
-                    if let Some(first_error) = service_errors.as_array().and_then(|arr| arr.get(0))
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
+                && let Some(service_errors) = json.get("serviceErrors")
+                    && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
                     {
                         let code = first_error
                             .get("code")
@@ -323,8 +323,6 @@ impl AppleAccount {
                             message
                         );
                     }
-                }
-            }
             bail!(
                 "SMS 2FA code submission failed with http status {}: {}",
                 status,
@@ -435,7 +433,7 @@ impl AppleAccount {
         let hashed_password = Sha256::digest(password.as_bytes());
 
         let password_hash = if selected_protocol == "s2k_fo" {
-            hex::encode(&hashed_password).into_bytes()
+            hex::encode(hashed_password).into_bytes()
         } else {
             hashed_password.to_vec()
         };
@@ -445,7 +443,7 @@ impl AppleAccount {
             .context("Failed to derive password using PBKDF2")?;
 
         let verifier: SrpClientVerifier<Sha256> = srp_client
-            .process_reply(&a, &self.email.as_bytes(), &password_buf, salt, b_pub)
+            .process_reply(&a, self.email.as_bytes(), &password_buf, salt, b_pub)
             .unwrap();
 
         let req2 = plist!(dict {
@@ -486,7 +484,7 @@ impl AppleAccount {
             .get_data("spd")
             .context("Failed to get SPD from login response")?;
 
-        let spd_decrypted = Self::decrypt_cbc(&verifier, &spd_encrypted)
+        let spd_decrypted = Self::decrypt_cbc(&verifier, spd_encrypted)
             .context("Failed to decrypt SPD from login response")?;
         let spd: plist::Dictionary =
             plist::from_bytes(&spd_decrypted).context("Failed to parse decrypted SPD plist")?;
@@ -575,7 +573,7 @@ impl AppleAccount {
             .get_data("et")
             .context("Failed to get encrypted token")?;
 
-        let decrypted_token = Self::decrypt_gcm(&encrypted_token, &session_key)
+        let decrypted_token = Self::decrypt_gcm(encrypted_token, session_key)
             .context("Failed to decrypt app token")?;
 
         let token: Dictionary = plist::from_bytes(&decrypted_token)
@@ -612,7 +610,7 @@ impl AppleAccount {
 
     fn create_session_key(usr: &SrpClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
         Ok(
-            <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(&usr.key())?
+            <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(usr.key())?
                 .chain_update(name.as_bytes())
                 .finalize()
                 .into_bytes()
@@ -627,7 +625,7 @@ impl AppleAccount {
 
         Ok(
             cbc::Decryptor::<aes::Aes256>::new_from_slices(&extra_data_key, extra_data_iv)?
-                .decrypt_padded_vec_mut::<Pkcs7>(&data)?,
+                .decrypt_padded_vec_mut::<Pkcs7>(data)?,
         )
     }
 

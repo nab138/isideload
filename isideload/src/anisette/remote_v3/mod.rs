@@ -97,7 +97,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
             .header(CONTENT_TYPE, "application/json")
             .body(
                 serde_json::json!({
-                "identifier": BASE64_STANDARD.encode(&state.keychain_identifier),
+                "identifier": BASE64_STANDARD.encode(state.keychain_identifier),
                 "adi_pb": BASE64_STANDARD.encode(adi_pb)
                 })
                 .to_string(),
@@ -120,7 +120,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
                     routing_info,
                     _device_description: client_info.client_info.clone(),
                     device_unique_identifier: state.get_device_id(),
-                    _local_user_id: hex::encode(&state.get_md_lu()),
+                    _local_user_id: hex::encode(state.get_md_lu()),
                     generated_at: SystemTime::now(),
                 };
 
@@ -128,8 +128,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
             }
             AnisetteHeaders::GetHeadersError { message } => {
                 Err(report!("Failed to get anisette headers")
-                    .attach(message)
-                    .into())
+                    .attach(message))
             }
         }
     }
@@ -253,7 +252,7 @@ impl RemoteV3AnisetteProvider {
                     ws_stream
                         .send(Message::Text(
                             serde_json::json!({
-                                "identifier": BASE64_STANDARD.encode(&state.keychain_identifier),
+                                "identifier": BASE64_STANDARD.encode(state.keychain_identifier),
                             })
                             .to_string()
                             .into(),
@@ -337,15 +336,13 @@ impl RemoteV3AnisetteProvider {
                 ProvisioningMessage::StartProvisioningError { message } => {
                     return Err(
                         report!("Anisette provisioning failed: start provisioning error")
-                            .attach(message)
-                            .into(),
+                            .attach(message),
                     );
                 }
                 ProvisioningMessage::EndProvisioningError { message } => {
                     return Err(
                         report!("Anisette provisioning failed: end provisioning error")
-                            .attach(message)
-                            .into(),
+                            .attach(message),
                     );
                 }
             }
