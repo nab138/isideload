@@ -16,7 +16,7 @@ const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
 pub struct GrandSlam {
     pub client: reqwest::Client,
     pub client_info: AnisetteClientInfo,
-    pub url_bag: Option<Dictionary>,
+    url_bag: Dictionary,
 }
 
 impl GrandSlam {
@@ -24,64 +24,75 @@ impl GrandSlam {
     ///
     /// # Arguments
     /// - `client`: The reqwest client to use for requests
-    pub fn new(client_info: AnisetteClientInfo, debug: bool) -> Self {
-        Self {
-            client: Self::build_reqwest_client(debug).unwrap(),
+    pub async fn new(client_info: AnisetteClientInfo, debug: bool) -> Result<Self, Report> {
+        let client = Self::build_reqwest_client(debug).unwrap();
+        let base_headers = Self::base_headers(&client_info, false)?;
+        let url_bag = Self::fetch_url_bag(&client, base_headers).await?;
+        Ok(Self {
+            client,
             client_info,
-            url_bag: None,
-        }
+            url_bag,
+        })
     }
 
-    /// Get the URL bag from GrandSlam
-    pub async fn get_url_bag(&mut self) -> Result<&Dictionary, Report> {
-        if self.url_bag.is_none() {
-            debug!("Fetching URL bag from GrandSlam");
-            let resp = self
-                .client
-                .get(URL_BAG)
-                .headers(self.base_headers(false)?)
-                .send()
-                .await
-                .context("Failed to fetch URL Bag")?
-                .text()
-                .await
-                .context("Failed to read URL Bag response text")?;
+    /// Fetch the URL bag from GrandSlam and cache it
+    pub async fn fetch_url_bag(
+        client: &reqwest::Client,
+        base_headers: HeaderMap,
+    ) -> Result<Dictionary, Report> {
+        debug!("Fetching URL bag from GrandSlam");
+        let resp = client
+            .get(URL_BAG)
+            .headers(base_headers)
+            .send()
+            .await
+            .context("Failed to fetch URL Bag")?
+            .text()
+            .await
+            .context("Failed to read URL Bag response text")?;
 
-            let dict: Dictionary =
-                plist::from_bytes(resp.as_bytes()).context("Failed to parse URL Bag plist")?;
-            let urls = dict
-                .get("urls")
-                .and_then(|v| v.as_dictionary())
-                .cloned()
-                .ok_or_else(|| report!("URL Bag plist missing 'urls' dictionary"))?;
+        let dict: Dictionary =
+            plist::from_bytes(resp.as_bytes()).context("Failed to parse URL Bag plist")?;
+        let urls = dict
+            .get("urls")
+            .and_then(|v| v.as_dictionary())
+            .cloned()
+            .ok_or_else(|| report!("URL Bag plist missing 'urls' dictionary"))?;
 
-            self.url_bag = Some(urls);
-        }
-        Ok(self.url_bag.as_ref().unwrap())
+        Ok(urls)
     }
 
-    pub async fn get_url(&mut self, key: &str) -> Result<String, Report> {
-        let url_bag = self.get_url_bag().await?;
-        let url = url_bag
+    pub fn get_url(&self, key: &str) -> Result<String, Report> {
+        let url = self
+            .url_bag
             .get_string(key)
             .context("Unable to find key in URL bag")?;
         Ok(url)
     }
 
     pub fn get(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
-        let builder = self.client.get(url).headers(self.base_headers(false)?);
+        let builder = self
+            .client
+            .get(url)
+            .headers(Self::base_headers(&self.client_info, false)?);
 
         Ok(builder)
     }
 
     pub fn get_sms(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
-        let builder = self.client.get(url).headers(self.base_headers(true)?);
+        let builder = self
+            .client
+            .get(url)
+            .headers(Self::base_headers(&self.client_info, true)?);
 
         Ok(builder)
     }
 
     pub fn post(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
-        let builder = self.client.post(url).headers(self.base_headers(false)?);
+        let builder = self
+            .client
+            .post(url)
+            .headers(Self::base_headers(&self.client_info, false)?);
 
         Ok(builder)
     }
@@ -121,7 +132,10 @@ impl GrandSlam {
         Ok(response_plist)
     }
 
-    fn base_headers(&self, sms: bool) -> Result<reqwest::header::HeaderMap, Report> {
+    fn base_headers(
+        client_info: &AnisetteClientInfo,
+        sms: bool,
+    ) -> Result<reqwest::header::HeaderMap, Report> {
         let mut headers = reqwest::header::HeaderMap::new();
         if !sms {
             headers.insert("Content-Type", HeaderValue::from_static("text/x-xml-plist"));
@@ -129,11 +143,11 @@ impl GrandSlam {
         }
         headers.insert(
             "X-Mme-Client-Info",
-            HeaderValue::from_str(&self.client_info.client_info)?,
+            HeaderValue::from_str(&client_info.client_info)?,
         );
         headers.insert(
             "User-Agent",
-            HeaderValue::from_str(&self.client_info.user_agent)?,
+            HeaderValue::from_str(&client_info.user_agent)?,
         );
         headers.insert("X-Xcode-Version", HeaderValue::from_static("14.2 (14C18)"));
         headers.insert(

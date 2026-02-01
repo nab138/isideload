@@ -6,7 +6,8 @@ use plist_macro::plist;
 use reqwest::header::HeaderMap;
 use rootcause::prelude::*;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use tokio::sync::RwLock;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct AnisetteClientInfo {
@@ -22,6 +23,7 @@ pub struct AnisetteData {
     _device_description: String,
     device_unique_identifier: String,
     _local_user_id: String,
+    generated_at: SystemTime,
 }
 
 // Some headers don't seem to be required. I guess not including them is technically more efficient soooo
@@ -87,11 +89,72 @@ impl AnisetteData {
 
         cpd
     }
+
+    pub fn needs_refresh(&self) -> bool {
+        let elapsed = self.generated_at.elapsed().unwrap();
+        elapsed.as_secs() > 60
+    }
 }
 
 #[async_trait::async_trait]
 pub trait AnisetteProvider {
-    async fn get_anisette_data(&mut self, gs: &mut GrandSlam) -> Result<AnisetteData, Report>;
+    async fn get_anisette_data(&self) -> Result<AnisetteData, Report>;
 
     async fn get_client_info(&mut self) -> Result<AnisetteClientInfo, Report>;
+
+    async fn provision(&mut self, gs: Arc<GrandSlam>) -> Result<(), Report>;
+
+    fn needs_provisioning(&self) -> Result<bool, Report>;
+}
+
+#[derive(Clone)]
+pub struct AnisetteDataGenerator {
+    provider: Arc<RwLock<dyn AnisetteProvider + Send + Sync>>,
+    data: Option<Arc<AnisetteData>>,
+}
+
+impl AnisetteDataGenerator {
+    pub fn new(provider: Arc<RwLock<dyn AnisetteProvider + Send + Sync>>) -> Self {
+        AnisetteDataGenerator {
+            provider,
+            data: None,
+        }
+    }
+
+    pub async fn get_anisette_data(
+        &mut self,
+        gs: Arc<GrandSlam>,
+    ) -> Result<Arc<AnisetteData>, Report> {
+        if let Some(data) = &self.data {
+            if !data.needs_refresh() {
+                return Ok(data.clone());
+            }
+        }
+
+        // trying to avoid locking as write unless necessary to promote concurrency
+        let provider = self.provider.read().await;
+
+        if provider.needs_provisioning()? {
+            drop(provider);
+            let mut provider_write = self.provider.write().await;
+            provider_write.provision(gs).await?;
+            drop(provider_write);
+
+            let provider = self.provider.read().await;
+            let data = provider.get_anisette_data().await?;
+            let arc_data = Arc::new(data);
+            self.data = Some(arc_data.clone());
+            Ok(arc_data)
+        } else {
+            let data = provider.get_anisette_data().await?;
+            let arc_data = Arc::new(data);
+            self.data = Some(arc_data.clone());
+            Ok(arc_data)
+        }
+    }
+
+    pub async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
+        let mut provider = self.provider.write().await;
+        provider.get_client_info().await
+    }
 }

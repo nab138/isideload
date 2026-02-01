@@ -47,10 +47,10 @@ impl std::fmt::Debug for DevelopmentCertificate {
 
 #[async_trait::async_trait]
 pub trait CertificatesApi {
-    fn developer_session(&self) -> &DeveloperSession<'_>;
+    fn developer_session(&mut self) -> &mut DeveloperSession;
 
     async fn list_all_development_certs(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<Vec<DevelopmentCertificate>, Report> {
@@ -72,7 +72,7 @@ pub trait CertificatesApi {
     }
 
     async fn revoke_development_cert(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         serial_number: &str,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
@@ -94,7 +94,7 @@ pub trait CertificatesApi {
     }
 
     async fn submit_development_csr(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         csr_content: String,
         machine_name: String,
@@ -121,8 +121,8 @@ pub trait CertificatesApi {
     }
 }
 
-impl CertificatesApi for DeveloperSession<'_> {
-    fn developer_session(&self) -> &DeveloperSession<'_> {
+impl CertificatesApi for DeveloperSession {
+    fn developer_session(&mut self) -> &mut DeveloperSession {
         self
     }
 }

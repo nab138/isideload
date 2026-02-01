@@ -2,6 +2,8 @@ mod state;
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use base64::prelude::*;
 use plist_macro::plist;
@@ -11,6 +13,7 @@ use serde::Deserialize;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info};
 
+use crate::SideloadError;
 use crate::anisette::remote_v3::state::AnisetteState;
 use crate::anisette::{AnisetteClientInfo, AnisetteData, AnisetteProvider};
 use crate::auth::grandslam::GrandSlam;
@@ -74,13 +77,19 @@ impl Default for RemoteV3AnisetteProvider {
 
 #[async_trait::async_trait]
 impl AnisetteProvider for RemoteV3AnisetteProvider {
-    async fn get_anisette_data(&mut self, gs: &mut GrandSlam) -> Result<AnisetteData, Report> {
-        let state = self.get_state(gs).await?.clone();
+    async fn get_anisette_data(&self) -> Result<AnisetteData, Report> {
+        let state = self
+            .state
+            .as_ref()
+            .ok_or(SideloadError::AnisetteNotProvisioned)?;
         let adi_pb = state
             .adi_pb
             .as_ref()
-            .ok_or(report!("Anisette state is not provisioned"))?;
-        let client_info = self.get_client_info().await?.client_info.clone();
+            .ok_or(SideloadError::AnisetteNotProvisioned)?;
+        let client_info = self
+            .client_info
+            .as_ref()
+            .ok_or(SideloadError::AnisetteNotProvisioned)?;
 
         let headers = self
             .client
@@ -109,9 +118,10 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
                     machine_id,
                     one_time_password,
                     routing_info,
-                    _device_description: client_info,
+                    _device_description: client_info.client_info.clone(),
                     device_unique_identifier: state.get_device_id(),
                     _local_user_id: hex::encode(&state.get_md_lu()),
+                    generated_at: SystemTime::now(),
                 };
 
                 Ok(data)
@@ -140,10 +150,24 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 
         Ok(self.client_info.as_ref().unwrap().clone())
     }
+
+    fn needs_provisioning(&self) -> Result<bool, Report> {
+        if let Some(state) = &self.state {
+            Ok(!state.is_provisioned() || self.client_info.is_none())
+        } else {
+            Ok(true)
+        }
+    }
+
+    async fn provision(&mut self, gs: Arc<GrandSlam>) -> Result<(), Report> {
+        self.get_client_info().await?;
+        self.get_state(gs).await?;
+        Ok(())
+    }
 }
 
 impl RemoteV3AnisetteProvider {
-    async fn get_state(&mut self, gs: &mut GrandSlam) -> Result<&mut AnisetteState, Report> {
+    async fn get_state(&mut self, gs: Arc<GrandSlam>) -> Result<&mut AnisetteState, Report> {
         let state_path = self.config_path.join("state.plist");
         fs::create_dir_all(&self.config_path)?;
         if self.state.is_none() {
@@ -195,13 +219,13 @@ impl RemoteV3AnisetteProvider {
     }
     async fn provision(
         state: &mut AnisetteState,
-        gs: &mut GrandSlam,
+        gs: Arc<GrandSlam>,
         url: &str,
     ) -> Result<(), Report> {
         debug!("Starting provisioning");
 
-        let start_provisioning = gs.get_url("midStartProvisioning").await?;
-        let end_provisioning = gs.get_url("midFinishProvisioning").await?;
+        let start_provisioning = gs.get_url("midStartProvisioning")?;
+        let end_provisioning = gs.get_url("midFinishProvisioning")?;
 
         let websocket_url = format!("{}/v3/provisioning_session", url)
             .replace("https://", "wss://")

@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::{
-    anisette::{AnisetteData, AnisetteProvider},
+    anisette::{AnisetteData, AnisetteDataGenerator},
     auth::{
         builder::AppleAccountBuilder,
         grandslam::{GrandSlam, GrandSlamErrorChecker},
@@ -30,9 +30,8 @@ use tracing::{debug, info, warn};
 pub struct AppleAccount {
     pub email: String,
     pub spd: Option<plist::Dictionary>,
-    pub anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
-    pub anisette_data: AnisetteData,
-    pub grandslam_client: GrandSlam,
+    pub anisette_generator: AnisetteDataGenerator,
+    pub grandslam_client: Arc<GrandSlam>,
     login_state: LoginState,
     debug: bool,
 }
@@ -64,7 +63,7 @@ impl AppleAccount {
     /// - `debug`: DANGER, If true, accept invalid certificates and enable verbose connection
     pub async fn new(
         email: &str,
-        mut anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
+        anisette_generator: AnisetteDataGenerator,
         debug: bool,
     ) -> Result<Self, Report> {
         info!("Initializing apple account");
@@ -72,26 +71,18 @@ impl AppleAccount {
             warn!("Debug mode enabled: this is a security risk!");
         }
 
-        let client_info = anisette_provider
-            .lock()
-            .unwrap()
+        let client_info = anisette_generator
             .get_client_info()
             .await
             .context("Failed to get anisette client info")?;
 
-        let mut grandslam_client = GrandSlam::new(client_info, debug);
-
-        let anisette_data = anisette_provider
-            .get_anisette_data(&mut grandslam_client)
-            .await
-            .context("Failed to get anisette data for login")?;
+        let grandslam_client = GrandSlam::new(client_info, debug).await?;
 
         Ok(AppleAccount {
             email: email.to_string(),
             spd: None,
-            anisette_provider,
-            anisette_data,
-            grandslam_client,
+            anisette_generator,
+            grandslam_client: Arc::new(grandslam_client),
             debug,
             login_state: LoginState::NeedsLogin,
         })
@@ -197,16 +188,22 @@ impl AppleAccount {
         two_factor_callback: impl Fn() -> Option<String>,
     ) -> Result<(), Report> {
         debug!("Trusted device 2FA required");
+
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for 2FA")?;
+
         let request_code_url = self
             .grandslam_client
-            .get_url("trustedDeviceSecondaryAuth")
-            .await?;
+            .get_url("trustedDeviceSecondaryAuth")?;
 
-        let submit_code_url = self.grandslam_client.get_url("validateCode").await?;
+        let submit_code_url = self.grandslam_client.get_url("validateCode")?;
 
         self.grandslam_client
             .get(&request_code_url)?
-            .headers(self.build_2fa_headers().await?)
+            .headers(self.build_2fa_headers(&anisette_data).await?)
             .send()
             .await
             .context("Failed to request trusted device 2fa")?
@@ -221,7 +218,7 @@ impl AppleAccount {
         let res = self
             .grandslam_client
             .get(&submit_code_url)?
-            .headers(self.build_2fa_headers().await?)
+            .headers(self.build_2fa_headers(&anisette_data).await?)
             .header("security-code", code)
             .send()
             .await
@@ -248,11 +245,17 @@ impl AppleAccount {
     ) -> Result<(), Report> {
         debug!("SMS 2FA required");
 
-        let request_code_url = self.grandslam_client.get_url("secondaryAuth").await?;
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for 2FA")?;
+
+        let request_code_url = self.grandslam_client.get_url("secondaryAuth")?;
 
         self.grandslam_client
             .get_sms(&request_code_url)?
-            .headers(self.build_2fa_headers().await?)
+            .headers(self.build_2fa_headers(&anisette_data).await?)
             .send()
             .await
             .context("Failed to request SMS 2FA")?
@@ -274,7 +277,7 @@ impl AppleAccount {
             "mode": "sms"
         });
 
-        let mut headers = self.build_2fa_headers().await?;
+        let mut headers = self.build_2fa_headers(&anisette_data).await?;
         headers.insert("Content-Type", HeaderValue::from_static("application/json"));
         headers.insert(
             "Accept",
@@ -332,8 +335,8 @@ impl AppleAccount {
         Ok(())
     }
 
-    async fn build_2fa_headers(&mut self) -> Result<HeaderMap, Report> {
-        let mut headers = self.anisette_data.get_header_map();
+    async fn build_2fa_headers(&self, anisette_data: &AnisetteData) -> Result<HeaderMap, Report> {
+        let mut headers = anisette_data.get_header_map();
 
         let spd = self
             .spd
@@ -354,18 +357,23 @@ impl AppleAccount {
         );
         headers.insert(
             "X-Apple-I-MD-RINFO",
-            reqwest::header::HeaderValue::from_str(&self.anisette_data.routing_info)?,
+            reqwest::header::HeaderValue::from_str(&anisette_data.routing_info)?,
         );
 
         Ok(headers)
     }
 
     async fn login_inner(&mut self, password: &str) -> Result<LoginState, Report> {
-        let gs_service_url = self.grandslam_client.get_url("gsService").await?;
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for login")?;
 
+        let gs_service_url = self.grandslam_client.get_url("gsService")?;
         debug!("GrandSlam service URL: {}", gs_service_url);
 
-        let cpd = self.anisette_data.get_client_provided_data();
+        let cpd = anisette_data.get_client_provided_data();
 
         let srp_client = SrpClient::<Sha256>::new(&G_2048);
         let a: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
@@ -510,6 +518,12 @@ impl AppleAccount {
             format!("com.apple.gs.{}", app)
         };
 
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for login")?;
+
         let spd = self
             .spd
             .as_ref()
@@ -531,8 +545,8 @@ impl AppleAccount {
             .into_bytes()
             .to_vec();
 
-        let gs_service_url = self.grandslam_client.get_url("gsService").await?;
-        let cpd = self.anisette_data.get_client_provided_data();
+        let gs_service_url = self.grandslam_client.get_url("gsService")?;
+        let cpd = anisette_data.get_client_provided_data();
 
         let request = plist!(dict {
             "Header": {

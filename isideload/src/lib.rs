@@ -15,6 +15,9 @@ pub enum SideloadError {
 
     #[error("Plist parse error: {0}")]
     PlistParseError(String),
+
+    #[error("Failed to get anisette data, anisette not provisioned")]
+    AnisetteNotProvisioned,
 }
 
 struct ReqwestErrorFormatter;

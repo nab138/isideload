@@ -1,14 +1,17 @@
+use std::sync::Arc;
+
 use rootcause::prelude::*;
+use tokio::sync::RwLock;
 
 use crate::{
-    anisette::{AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
+    anisette::{AnisetteDataGenerator, AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
     auth::apple_account::AppleAccount,
 };
 
 pub struct AppleAccountBuilder {
     email: String,
     debug: Option<bool>,
-    anisette_provider: Option<Box<dyn AnisetteProvider>>,
+    anisette_generator: Option<AnisetteDataGenerator>,
 }
 
 impl AppleAccountBuilder {
@@ -20,7 +23,7 @@ impl AppleAccountBuilder {
         Self {
             email: email.to_string(),
             debug: None,
-            anisette_provider: None,
+            anisette_generator: None,
         }
     }
 
@@ -33,8 +36,13 @@ impl AppleAccountBuilder {
         self
     }
 
-    pub fn anisette_provider(mut self, anisette_provider: impl AnisetteProvider + 'static) -> Self {
-        self.anisette_provider = Some(Box::new(anisette_provider));
+    pub fn anisette_provider(
+        mut self,
+        anisette_provider: impl AnisetteProvider + Send + Sync + 'static,
+    ) -> Self {
+        self.anisette_generator = Some(AnisetteDataGenerator::new(Arc::new(RwLock::new(
+            anisette_provider,
+        ))));
         self
     }
 
@@ -44,11 +52,11 @@ impl AppleAccountBuilder {
     /// Returns an error if the reqwest client cannot be built
     pub async fn build(self) -> Result<AppleAccount, Report> {
         let debug = self.debug.unwrap_or(false);
-        let anisette_provider = self
-            .anisette_provider
-            .unwrap_or_else(|| Box::new(RemoteV3AnisetteProvider::default()));
+        let anisette_generator = self.anisette_generator.unwrap_or_else(|| {
+            AnisetteDataGenerator::new(Arc::new(RwLock::new(RemoteV3AnisetteProvider::default())))
+        });
 
-        AppleAccount::new(&self.email, anisette_provider, debug).await
+        AppleAccount::new(&self.email, anisette_generator, debug).await
     }
 
     /// Build the AppleAccount and log in

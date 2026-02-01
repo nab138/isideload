@@ -18,10 +18,10 @@ pub struct AppGroup {
 
 #[async_trait::async_trait]
 pub trait AppGroupsApi {
-    fn developer_session(&self) -> &DeveloperSession<'_>;
+    fn developer_session(&mut self) -> &mut DeveloperSession;
 
     async fn list_app_groups(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<Vec<AppGroup>, Report> {
@@ -43,7 +43,7 @@ pub trait AppGroupsApi {
     }
 
     async fn add_app_group(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         name: &str,
         identifier: &str,
@@ -69,7 +69,7 @@ pub trait AppGroupsApi {
     }
 
     async fn assign_app_group(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         app_group: &AppGroup,
         app_id: &AppId,
@@ -93,8 +93,8 @@ pub trait AppGroupsApi {
     }
 }
 
-impl AppGroupsApi for DeveloperSession<'_> {
-    fn developer_session(&self) -> &DeveloperSession<'_> {
+impl AppGroupsApi for DeveloperSession {
+    fn developer_session(&mut self) -> &mut DeveloperSession {
         self
     }
 }

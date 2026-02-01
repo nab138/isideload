@@ -18,10 +18,10 @@ pub struct DeveloperDevice {
 
 #[async_trait::async_trait]
 pub trait DevicesApi {
-    fn developer_session(&self) -> &DeveloperSession<'_>;
+    fn developer_session(&mut self) -> &mut DeveloperSession;
 
     async fn list_devices(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<Vec<DeveloperDevice>, Report> {
@@ -39,7 +39,7 @@ pub trait DevicesApi {
     }
 
     async fn add_device(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         name: &str,
         udid: &str,
@@ -61,8 +61,8 @@ pub trait DevicesApi {
     }
 }
 
-impl DevicesApi for DeveloperSession<'_> {
-    fn developer_session(&self) -> &DeveloperSession<'_> {
+impl DevicesApi for DeveloperSession {
+    fn developer_session(&mut self) -> &mut DeveloperSession {
         self
     }
 }

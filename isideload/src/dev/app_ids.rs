@@ -52,10 +52,10 @@ pub struct Profile {
 
 #[async_trait::async_trait]
 pub trait AppIdsApi {
-    fn developer_session(&self) -> &DeveloperSession<'_>;
+    fn developer_session(&mut self) -> &mut DeveloperSession;
 
     async fn add_app_id(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         name: &str,
         identifier: &str,
@@ -77,7 +77,7 @@ pub trait AppIdsApi {
     }
 
     async fn list_app_ids(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<ListAppIdsResponse, Report> {
@@ -107,7 +107,7 @@ pub trait AppIdsApi {
     }
 
     async fn update_app_id(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         app_id: &AppId,
         features: Dictionary,
@@ -130,7 +130,7 @@ pub trait AppIdsApi {
     }
 
     async fn delete_app_id(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         app_id: &AppId,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
@@ -149,7 +149,7 @@ pub trait AppIdsApi {
     }
 
     async fn download_team_provisioning_profile(
-        &self,
+        &mut self,
         team: &DeveloperTeam,
         app_id: &AppId,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
@@ -173,8 +173,8 @@ pub trait AppIdsApi {
     }
 }
 
-impl AppIdsApi for DeveloperSession<'_> {
-    fn developer_session(&self) -> &DeveloperSession<'_> {
+impl AppIdsApi for DeveloperSession {
+    fn developer_session(&mut self) -> &mut DeveloperSession {
         self
     }
 }

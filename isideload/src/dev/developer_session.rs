@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use plist::Dictionary;
 use plist_macro::{plist, plist_to_xml_string};
@@ -8,7 +8,7 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::{
-    anisette::{AnisetteData, AnisetteProvider},
+    anisette::AnisetteDataGenerator,
     auth::{
         apple_account::{AppToken, AppleAccount},
         grandslam::GrandSlam,
@@ -23,29 +23,29 @@ pub use super::device_type::DeveloperDeviceType;
 pub use super::devices::*;
 pub use super::teams::*;
 
-pub struct DeveloperSession<'a> {
+pub struct DeveloperSession {
     token: AppToken,
     adsid: String,
-    client: &'a GrandSlam,
-    anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
+    client: Arc<GrandSlam>,
+    anisette_generator: AnisetteDataGenerator,
 }
 
-impl<'a> DeveloperSession<'a> {
+impl DeveloperSession {
     pub fn new(
         token: AppToken,
         adsid: String,
-        client: &'a GrandSlam,
-        anisette_provider: Arc<Mutex<dyn AnisetteProvider + Send>>,
+        client: Arc<GrandSlam>,
+        anisette_generator: AnisetteDataGenerator,
     ) -> Self {
         DeveloperSession {
             token,
             adsid,
             client,
-            anisette_provider,
+            anisette_generator,
         }
     }
 
-    pub async fn from_account(account: &'a mut AppleAccount) -> Result<Self, Report> {
+    pub async fn from_account(account: &mut AppleAccount) -> Result<Self, Report> {
         let token = account
             .get_app_token("xcode.auth")
             .await
@@ -59,13 +59,13 @@ impl<'a> DeveloperSession<'a> {
         Ok(DeveloperSession::new(
             token,
             spd.get_string("adsid")?,
-            &account.grandslam_client,
-            &account.anisette_data,
+            account.grandslam_client.clone(),
+            account.anisette_generator.clone(),
         ))
     }
 
     async fn send_dev_request_internal(
-        &self,
+        &mut self,
         url: &str,
         body: impl Into<Option<Dictionary>>,
     ) -> Result<(Dictionary, Option<String>), Report> {
@@ -86,7 +86,12 @@ impl<'a> DeveloperSession<'a> {
             .body(plist_to_xml_string(&body))
             .header("X-Apple-GS-Token", &self.token.token)
             .header("X-Apple-I-Identity-Id", &self.adsid)
-            .headers(self.anisette_data.get_header_map())
+            .headers(
+                self.anisette_generator
+                    .get_anisette_data(self.client.clone())
+                    .await?
+                    .get_header_map(),
+            )
             .send()
             .await?
             .error_for_status()
@@ -133,7 +138,7 @@ impl<'a> DeveloperSession<'a> {
     }
 
     pub async fn send_dev_request<T: DeserializeOwned>(
-        &self,
+        &mut self,
         url: &str,
         body: impl Into<Option<Dictionary>>,
         response_key: &str,
@@ -152,7 +157,7 @@ impl<'a> DeveloperSession<'a> {
     }
 
     pub async fn send_dev_request_no_response(
-        &self,
+        &mut self,
         url: &str,
         body: impl Into<Option<Dictionary>>,
     ) -> Result<Dictionary, Report> {

@@ -16,9 +16,9 @@ pub struct DeveloperTeam {
 
 #[async_trait::async_trait]
 pub trait TeamsApi {
-    fn developer_session(&self) -> &DeveloperSession<'_>;
+    fn developer_session(&mut self) -> &mut DeveloperSession;
 
-    async fn list_teams(&self) -> Result<Vec<DeveloperTeam>, Report> {
+    async fn list_teams(&mut self) -> Result<Vec<DeveloperTeam>, Report> {
         let response: Vec<DeveloperTeam> = self
             .developer_session()
             .send_dev_request(&dev_url("listTeams", Any), None, "teams")
@@ -29,8 +29,8 @@ pub trait TeamsApi {
     }
 }
 
-impl TeamsApi for DeveloperSession<'_> {
-    fn developer_session(&self) -> &DeveloperSession<'_> {
+impl TeamsApi for DeveloperSession {
+    fn developer_session(&mut self) -> &mut DeveloperSession {
         self
     }
 }

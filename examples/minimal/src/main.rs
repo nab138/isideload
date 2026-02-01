@@ -49,7 +49,7 @@ async fn main() {
 
     let mut account = account.unwrap();
 
-    let dev_session = DeveloperSession::from_account(&mut account)
+    let mut dev_session = DeveloperSession::from_account(&mut account)
         .await
         .expect("Failed to create developer session");
 
