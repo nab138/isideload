@@ -8,6 +8,7 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::{
+    SideloadError,
     anisette::AnisetteDataGenerator,
     auth::{
         apple_account::{AppToken, AppleAccount},
@@ -68,7 +69,7 @@ impl DeveloperSession {
         &mut self,
         url: &str,
         body: impl Into<Option<Dictionary>>,
-    ) -> Result<(Dictionary, Option<String>), Report> {
+    ) -> Result<(Dictionary, Option<SideloadError>), Report> {
         let body = body.into().unwrap_or_else(Dictionary::new);
 
         let base = plist!(dict {
@@ -108,27 +109,23 @@ impl DeveloperSession {
         // 2. We return server errors if the expected data is missing
         // 3. We return parsing errors if there is no server error but the expected data is missing
         let response_code = dict.get("resultCode").and_then(|v| v.as_signed_integer());
-        let mut server_error: Option<String> = None;
+        let mut server_error: Option<SideloadError> = None;
         if let Some(code) = response_code {
             if code != 0 {
-                let user_string = dict
-                    .get("userString")
-                    .and_then(|v| v.as_string())
-                    .unwrap_or("Developer request failed.");
-
                 let result_string = dict
                     .get("resultString")
                     .and_then(|v| v.as_string())
                     .unwrap_or("No error message given.");
+                let user_string = dict
+                    .get("userString")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or(result_string);
+                server_error = Some(SideloadError::DeveloperError(code, user_string.to_string()));
 
-                // if user and result string match, only show one
-                if user_string == result_string {
-                    server_error = Some(format!("{} Code: {}", user_string, code));
-                } else {
-                    server_error =
-                        Some(format!("{} Code: {}; {}", user_string, code, result_string));
-                }
-                error!(server_error);
+                error!(
+                    "Developer request returned error code {}: {} ({})",
+                    code, user_string, result_string
+                );
             }
         } else {
             warn!("No resultCode in developer request response");
@@ -148,9 +145,10 @@ impl DeveloperSession {
         let result: Result<T, _> = dict.get_struct(response_key);
 
         if result.is_err()
-            && let Some(err) = server_error {
-                bail!(err);
-            }
+            && let Some(err) = server_error
+        {
+            bail!(err);
+        }
 
         Ok(result.context("Failed to extract developer request result")?)
     }

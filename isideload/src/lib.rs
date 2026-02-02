@@ -18,6 +18,9 @@ pub enum SideloadError {
 
     #[error("Failed to get anisette data, anisette not provisioned")]
     AnisetteNotProvisioned,
+
+    #[error("Developer error {0}: {1}")]
+    DeveloperError(i64, String),
 }
 
 struct ReqwestErrorFormatter;
