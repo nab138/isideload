@@ -6,6 +6,7 @@ use rootcause::{
 pub mod anisette;
 pub mod auth;
 pub mod dev;
+pub mod sideload;
 pub mod util;
 
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +24,7 @@ pub enum SideloadError {
     DeveloperError(i64, String),
 }
 
+// The default reqwest error formatter sucks and provides no info
 struct ReqwestErrorFormatter;
 
 impl ContextFormatterHook<reqwest::Error> for ReqwestErrorFormatter {
