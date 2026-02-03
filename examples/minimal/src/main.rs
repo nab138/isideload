@@ -1,12 +1,11 @@
-use std::env;
+use std::{env, path::PathBuf};
 
+use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::AppleAccount,
-    dev::{
-        certificates::CertificatesApi,
-        developer_session::{DeveloperSession, TeamsApi},
-    },
+    dev::developer_session::DeveloperSession,
+    sideload::{SideloadConfiguration, TeamSelection, sideload_app},
 };
 
 use tracing::Level;
@@ -21,14 +20,15 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let args: Vec<String> = env::args().collect();
-    // let _app_path = PathBuf::from(
-    //     args.get(1)
-    //         .expect("Please provide the path to the app to install"),
-    // );
+
     let apple_id = args
         .get(1)
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(2).expect("Please provide the Apple ID password");
+    let app_path = PathBuf::from(
+        args.get(3)
+            .expect("Please provide the path to the app to install"),
+    );
 
     let get_2fa_code = || {
         let mut code = String::new();
@@ -53,25 +53,46 @@ async fn main() {
         .await
         .expect("Failed to create developer session");
 
-    let teams = dev_session
-        .list_teams()
-        .await
-        .expect("Failed to list teams");
+    let usbmuxd = UsbmuxdConnection::default().await;
+    if usbmuxd.is_err() {
+        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
+    }
+    let mut usbmuxd = usbmuxd.unwrap();
 
-    let team = teams
-        .get(0)
-        .expect("No developer teams available for this account");
+    let devs = usbmuxd.get_devices().await.unwrap();
+    if devs.is_empty() {
+        panic!("No devices found");
+    }
 
-    // let app_ids = dev_session
-    //     .list_app_ids(team, None)
-    //     .await
-    //     .expect("Failed to add appid");
-    // let app_id = app_ids.app_ids.get(0).cloned().unwrap();
+    let provider = devs
+        .iter()
+        .next()
+        .unwrap()
+        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
-    let res = dev_session
-        .list_all_development_certs(team, None)
-        .await
-        .expect("Failed to list dev certs");
+    let sideload_config =
+        SideloadConfiguration::builder().team_selection(TeamSelection::Prompt(|teams| {
+            println!("Please select a team:");
+            for (index, team) in teams.iter().enumerate() {
+                println!(
+                    "{}: {} ({})",
+                    index + 1,
+                    team.name.as_deref().unwrap_or("<Unnamed>"),
+                    team.team_id
+                );
+            }
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
+            let selection = input.trim().parse::<usize>().ok()?;
+            if selection == 0 || selection > teams.len() {
+                return None;
+            }
+            Some(teams[selection - 1].team_id.clone())
+        }));
 
-    println!("{:?}", res);
+    let result = sideload_app(&provider, &mut dev_session, app_path, &sideload_config).await;
+    match result {
+        Ok(_) => println!("App installed successfully"),
+        Err(e) => panic!("Failed to install app: {:?}", e),
+    }
 }

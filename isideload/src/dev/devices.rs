@@ -6,6 +6,7 @@ use crate::dev::{
 use plist_macro::plist;
 use rootcause::prelude::*;
 use serde::Deserialize;
+use tracing::info;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +59,27 @@ pub trait DevicesApi {
             .context("Failed to add developer device")?;
 
         Ok(device)
+    }
+
+    // TODO: This can be skipped if we know the device is already registered
+    /// Check if the device is a development device, and add it if not
+    async fn ensure_device_registered(
+        &mut self,
+        team: &DeveloperTeam,
+        name: &str,
+        udid: &str,
+        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
+    ) -> Result<(), Report> {
+        let device_type = device_type.into();
+        let devices = self.list_devices(team, device_type.clone()).await?;
+
+        if !devices.iter().any(|d| d.device_number == udid) {
+            info!("Registering development device");
+            self.add_device(team, name, udid, device_type).await?;
+        }
+        info!("Device is a development device");
+
+        Ok(())
     }
 }
 
