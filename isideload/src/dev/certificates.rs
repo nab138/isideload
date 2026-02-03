@@ -3,7 +3,7 @@ use crate::dev::{
     device_type::{DeveloperDeviceType, dev_url},
     teams::DeveloperTeam,
 };
-use plist::Data;
+use plist::{Data, Date};
 use plist_macro::plist;
 use rootcause::prelude::*;
 use serde::Deserialize;
@@ -16,7 +16,27 @@ pub struct DevelopmentCertificate {
     pub certificate_id: Option<String>,
     pub serial_number: Option<String>,
     pub machine_id: Option<String>,
+    pub machine_name: Option<String>,
     pub cert_content: Option<Data>,
+    pub certificate_platform: Option<String>,
+    pub certificate_type: Option<CertificateType>,
+    pub status: Option<String>,
+    pub status_code: Option<i64>,
+    pub expiration_date: Option<Date>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CertificateType {
+    pub certificate_type_display_id: Option<String>,
+    pub name: Option<String>,
+    pub platform: Option<String>,
+    pub permission_type: Option<String>,
+    pub distribution_type: Option<String>,
+    pub distribution_method: Option<String>,
+    pub owner_type: Option<String>,
+    pub days_overlap: Option<i64>,
+    pub max_active_certs: Option<i64>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -28,11 +48,12 @@ pub struct CertRequest {
 // the automatic debug implementation spams the console with the cert content bytes
 impl std::fmt::Debug for DevelopmentCertificate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DevelopmentCertificate")
-            .field("name", &self.name)
+        let mut s = f.debug_struct("DevelopmentCertificate");
+        s.field("name", &self.name)
             .field("certificate_id", &self.certificate_id)
             .field("serial_number", &self.serial_number)
             .field("machine_id", &self.machine_id)
+            .field("machine_name", &self.machine_name)
             .field(
                 "cert_content",
                 &self
@@ -41,6 +62,11 @@ impl std::fmt::Debug for DevelopmentCertificate {
                     .map(|c| format!("Some([{} bytes])", c.as_ref().len()))
                     .unwrap_or("None".to_string()),
             )
+            .field("certificate_platform", &self.certificate_platform)
+            .field("certificate_type", &self.certificate_type)
+            .field("status", &self.status)
+            .field("status_code", &self.status_code)
+            .field("expiration_date", &self.expiration_date)
             .finish()
     }
 }
