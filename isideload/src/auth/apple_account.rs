@@ -12,19 +12,16 @@ use aes::{
     Aes256,
     cipher::{block_padding::Pkcs7, consts::U16},
 };
-use aes_gcm::{AeadInPlace, AesGcm, KeyInit, Nonce};
+use aes_gcm::{AeadInOut, AesGcm, KeyInit, Nonce};
 use base64::{Engine, prelude::BASE64_STANDARD};
-use cbc::cipher::{BlockDecryptMut, KeyIvInit};
-use hmac::Mac;
+use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
+use hmac::{Hmac, Mac};
 use plist::Dictionary;
 use plist_macro::plist;
 use reqwest::header::{HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use sha2::{Digest, Sha256};
-use srp::{
-    client::{SrpClient, SrpClientVerifier},
-    groups::G_2048,
-};
+use srp::{ClientVerifier, groups::G2048};
 use tracing::{debug, info, warn};
 
 pub struct AppleAccount {
@@ -302,27 +299,27 @@ impl AppleAccount {
             // try to parse as json, if it fails, just bail with the text
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
                 && let Some(service_errors) = json.get("serviceErrors")
-                    && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
-                    {
-                        let code = first_error
-                            .get("code")
-                            .and_then(|c| c.as_str())
-                            .unwrap_or("unknown");
-                        let title = first_error
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("No title provided");
-                        let message = first_error
-                            .get("message")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("No message provided");
-                        bail!(
-                            "SMS 2FA code submission failed (code {}): {} - {}",
-                            code,
-                            title,
-                            message
-                        );
-                    }
+                && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
+            {
+                let code = first_error
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("unknown");
+                let title = first_error
+                    .get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("No title provided");
+                let message = first_error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("No message provided");
+                bail!(
+                    "SMS 2FA code submission failed (code {}): {} - {}",
+                    code,
+                    title,
+                    message
+                );
+            }
             bail!(
                 "SMS 2FA code submission failed with http status {}: {}",
                 status,
@@ -373,7 +370,7 @@ impl AppleAccount {
 
         let cpd = anisette_data.get_client_provided_data();
 
-        let srp_client = SrpClient::<Sha256>::new(&G_2048);
+        let srp_client = srp::Client::<G2048, Sha256>::new_with_options(false);
         let a: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
         let a_pub = srp_client.compute_public_ephemeral(&a);
 
@@ -442,7 +439,7 @@ impl AppleAccount {
         pbkdf2::pbkdf2::<hmac::Hmac<Sha256>>(&password_hash, salt, iters as u32, &mut password_buf)
             .context("Failed to derive password using PBKDF2")?;
 
-        let verifier: SrpClientVerifier<Sha256> = srp_client
+        let verifier = srp_client
             .process_reply(&a, self.email.as_bytes(), &password_buf, salt, b_pub)
             .unwrap();
 
@@ -534,7 +531,7 @@ impl AppleAccount {
         let session_key = spd.get_data("sk").context("Failed to get app token")?;
         let c = spd.get_data("c").context("Failed to get app token")?;
 
-        let checksum = <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(session_key)
+        let checksum = Hmac::<Sha256>::new_from_slice(session_key)
             .unwrap()
             .chain_update("apptokens".as_bytes())
             .chain_update(dsid.as_bytes())
@@ -608,24 +605,22 @@ impl AppleAccount {
         Ok(app_token)
     }
 
-    fn create_session_key(usr: &SrpClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
-        Ok(
-            <hmac::Hmac<Sha256> as hmac::Mac>::new_from_slice(usr.key())?
-                .chain_update(name.as_bytes())
-                .finalize()
-                .into_bytes()
-                .to_vec(),
-        )
+    fn create_session_key(usr: &ClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
+        Ok(Hmac::<Sha256>::new_from_slice(usr.key())?
+            .chain_update(name.as_bytes())
+            .finalize()
+            .into_bytes()
+            .to_vec())
     }
 
-    fn decrypt_cbc(usr: &SrpClientVerifier<Sha256>, data: &[u8]) -> Result<Vec<u8>, Report> {
+    fn decrypt_cbc(usr: &ClientVerifier<Sha256>, data: &[u8]) -> Result<Vec<u8>, Report> {
         let extra_data_key = Self::create_session_key(usr, "extra data key:")?;
         let extra_data_iv = Self::create_session_key(usr, "extra data iv:")?;
         let extra_data_iv = &extra_data_iv[..16];
 
         Ok(
             cbc::Decryptor::<aes::Aes256>::new_from_slices(&extra_data_key, extra_data_iv)?
-                .decrypt_padded_vec_mut::<Pkcs7>(data)?,
+                .decrypt_padded_vec::<Pkcs7>(data)?,
         )
     }
 
@@ -653,14 +648,14 @@ impl AppleAccount {
             bail!("IV is not the correct length: {} bytes", iv.len());
         }
 
-        let key = aes_gcm::Key::<AesGcm<Aes256, U16>>::from_slice(key);
-        let cipher = AesGcm::<Aes256, U16>::new(key);
-        let nonce = Nonce::<U16>::from_slice(iv);
+        let key = aes_gcm::Key::<AesGcm<Aes256, U16>>::try_from(key)?;
+        let cipher = AesGcm::<Aes256, U16>::new(&key);
+        let nonce = Nonce::<U16>::try_from(iv)?;
 
         let mut buf = ciphertext_and_tag.to_vec();
 
         cipher
-            .decrypt_in_place(nonce, header, &mut buf)
+            .decrypt_in_place(&nonce, header, &mut buf)
             .map_err(|e| report!("Failed to decrypt gcm: {}", e))?;
 
         Ok(buf)
