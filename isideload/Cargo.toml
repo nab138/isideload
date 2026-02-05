@@ -24,7 +24,7 @@ async-trait = "0.1.89"
 serde = "1.0.228"
 rand = "0.9.2"
 uuid = {version = "1.20.0", features = ["v4"] }
-sha2 = "0.11.0-rc.4"
+sha2 = "0.11.0-rc.5"
 tracing = "0.1.44"
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
 rootcause = "0.11.1"
