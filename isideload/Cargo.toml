@@ -11,8 +11,9 @@ keywords = ["ios", "sideload"]
 readme = "../README.md"
 
 [features]
-default = ["install"]
+default = ["install", "keyring-storage"]
 install = ["dep:idevice"]
+keyring-storage = ["keyring"]
 
 [dependencies]
 idevice = { version = "0.1.52", optional = true }
@@ -39,3 +40,4 @@ cbc = { version = "0.2.0-rc.3", features = ["alloc"] }
 aes = "0.9.0-rc.4"
 aes-gcm = "0.11.0-rc.3"
 tokio = "1.49.0"
+keyring = { version = "3.6.3", optional = true }

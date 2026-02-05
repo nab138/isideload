@@ -8,6 +8,7 @@ use crate::dev::teams::TeamsApi;
 use crate::dev::{developer_session::DeveloperSession, devices::DevicesApi};
 use crate::util::device::IdeviceInfo;
 
+pub mod certificate;
 pub mod config;
 pub use config::{SideloadConfiguration, TeamSelection};
 
@@ -18,7 +19,6 @@ pub async fn sideload_app(
     config: &SideloadConfiguration,
 ) -> Result<(), Report> {
     let device_info = IdeviceInfo::from_device(device_provider).await?;
-
     let teams = dev_session.list_teams().await?;
     let team = match teams.len() {
         0 => {

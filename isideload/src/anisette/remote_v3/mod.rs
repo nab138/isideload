@@ -20,7 +20,7 @@ use crate::auth::grandslam::GrandSlam;
 use crate::util::plist::PlistDataExtract;
 use futures_util::{SinkExt, StreamExt};
 
-pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.sidestore.io";
+pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
 
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
@@ -127,8 +127,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
                 Ok(data)
             }
             AnisetteHeaders::GetHeadersError { message } => {
-                Err(report!("Failed to get anisette headers")
-                    .attach(message))
+                Err(report!("Failed to get anisette headers").attach(message))
             }
         }
     }
