@@ -5,7 +5,7 @@ use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::AppleAccount,
     dev::developer_session::DeveloperSession,
-    sideload::{SideloadConfiguration, TeamSelection, sideload_app},
+    sideload::{SideloaderBuilder, TeamSelection},
 };
 
 use tracing::Level;
@@ -70,27 +70,26 @@ async fn main() {
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
-    let sideload_config =
-        SideloadConfiguration::builder().team_selection(TeamSelection::Prompt(|teams| {
-            println!("Please select a team:");
-            for (index, team) in teams.iter().enumerate() {
-                println!(
-                    "{}: {} ({})",
-                    index + 1,
-                    team.name.as_deref().unwrap_or("<Unnamed>"),
-                    team.team_id
-                );
-            }
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            let selection = input.trim().parse::<usize>().ok()?;
-            if selection == 0 || selection > teams.len() {
-                return None;
-            }
-            Some(teams[selection - 1].team_id.clone())
-        }));
+    let builder = SideloaderBuilder::new().team_selection(TeamSelection::Prompt(|teams| {
+        println!("Please select a team:");
+        for (index, team) in teams.iter().enumerate() {
+            println!(
+                "{}: {} ({})",
+                index + 1,
+                team.name.as_deref().unwrap_or("<Unnamed>"),
+                team.team_id
+            );
+        }
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let selection = input.trim().parse::<usize>().ok()?;
+        if selection == 0 || selection > teams.len() {
+            return None;
+        }
+        Some(teams[selection - 1].team_id.clone())
+    }));
 
-    let result = sideload_app(&provider, &mut dev_session, app_path, &sideload_config).await;
+    // let result = bu(&provider, &mut dev_session, app_path, &sideload_config).await;
     match result {
         Ok(_) => println!("App installed successfully"),
         Err(e) => panic!("Failed to install app: {:?}", e),

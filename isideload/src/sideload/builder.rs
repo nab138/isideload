@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::dev::teams::DeveloperTeam;
+use crate::{dev::teams::DeveloperTeam, util::storage::SideloadingStorage};
 
 /// Configuration for selecting a developer team during sideloading
 ///
@@ -22,25 +22,32 @@ impl Display for TeamSelection {
     }
 }
 
-pub struct SideloadConfiguration {
+pub struct SideloaderBuilder {
     pub team_selection: TeamSelection,
+    pub storage: Box<dyn SideloadingStorage>,
 }
 
-impl Default for SideloadConfiguration {
+impl Default for SideloaderBuilder {
     fn default() -> Self {
-        SideloadConfiguration {
+        SideloaderBuilder {
             team_selection: TeamSelection::First,
+            storage: Box::new(crate::util::storage::new_storage()),
         }
     }
 }
 
-impl SideloadConfiguration {
-    pub fn builder() -> Self {
+impl SideloaderBuilder {
+    pub fn new() -> Self {
         Self::default()
     }
 
     pub fn team_selection(mut self, selection: TeamSelection) -> Self {
         self.team_selection = selection;
+        self
+    }
+
+    pub fn storage(mut self, storage: Box<dyn SideloadingStorage>) -> Self {
+        self.storage = storage;
         self
     }
 }
