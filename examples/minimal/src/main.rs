@@ -49,7 +49,7 @@ async fn main() {
 
     let mut account = account.unwrap();
 
-    let mut dev_session = DeveloperSession::from_account(&mut account)
+    let dev_session = DeveloperSession::from_account(&mut account)
         .await
         .expect("Failed to create developer session");
 
@@ -70,26 +70,28 @@ async fn main() {
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
-    let builder = SideloaderBuilder::new().team_selection(TeamSelection::Prompt(|teams| {
-        println!("Please select a team:");
-        for (index, team) in teams.iter().enumerate() {
-            println!(
-                "{}: {} ({})",
-                index + 1,
-                team.name.as_deref().unwrap_or("<Unnamed>"),
-                team.team_id
-            );
-        }
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
-        let selection = input.trim().parse::<usize>().ok()?;
-        if selection == 0 || selection > teams.len() {
-            return None;
-        }
-        Some(teams[selection - 1].team_id.clone())
-    }));
+    let mut sideloader = SideloaderBuilder::new(dev_session)
+        .team_selection(TeamSelection::Prompt(|teams| {
+            println!("Please select a team:");
+            for (index, team) in teams.iter().enumerate() {
+                println!(
+                    "{}: {} ({})",
+                    index + 1,
+                    team.name.as_deref().unwrap_or("<Unnamed>"),
+                    team.team_id
+                );
+            }
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
+            let selection = input.trim().parse::<usize>().ok()?;
+            if selection == 0 || selection > teams.len() {
+                return None;
+            }
+            Some(teams[selection - 1].team_id.clone())
+        }))
+        .build();
 
-    // let result = bu(&provider, &mut dev_session, app_path, &sideload_config).await;
+    let result = sideloader.install_app(&provider, app_path).await;
     match result {
         Ok(_) => println!("App installed successfully"),
         Err(e) => panic!("Failed to install app: {:?}", e),

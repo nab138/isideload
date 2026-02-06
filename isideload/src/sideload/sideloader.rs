@@ -15,12 +15,24 @@ use rootcause::prelude::*;
 use tracing::info;
 
 pub struct Sideloader {
-    pub team_selection: TeamSelection,
-    pub storage: Box<dyn SideloadingStorage>,
-    pub dev_session: DeveloperSession,
+    team_selection: TeamSelection,
+    storage: Box<dyn SideloadingStorage>,
+    dev_session: DeveloperSession,
 }
 
 impl Sideloader {
+    pub fn new(
+        team_selection: TeamSelection,
+        storage: Box<dyn SideloadingStorage>,
+        dev_session: DeveloperSession,
+    ) -> Self {
+        Sideloader {
+            team_selection,
+            storage,
+            dev_session,
+        }
+    }
+
     pub async fn install_app(
         &mut self,
         device_provider: &impl IdeviceProvider,

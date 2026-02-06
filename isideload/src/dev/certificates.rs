@@ -97,6 +97,33 @@ pub trait CertificatesApi {
         Ok(certs)
     }
 
+    async fn list_ios_certs(
+        &mut self,
+        team: &DeveloperTeam,
+    ) -> Result<Vec<DevelopmentCertificate>, Report> {
+        let certs = self
+            .list_all_development_certs(team, DeveloperDeviceType::Ios)
+            .await?;
+
+        Ok(certs
+            .into_iter()
+            .filter(|c| {
+                if let Some(platform) = &c.certificate_platform {
+                    platform.to_lowercase() == "ios"
+                } else if let Some(cert_type) = &c.certificate_type {
+                    if let Some(platform) = &cert_type.platform {
+                        platform.to_lowercase() == "ios"
+                    } else {
+                        // I don't know how consistently these field is populated because apple apis are stupid, and I don't want to break things so just assume
+                        true
+                    }
+                } else {
+                    true
+                }
+            })
+            .collect())
+    }
+
     async fn revoke_development_cert(
         &mut self,
         team: &DeveloperTeam,
