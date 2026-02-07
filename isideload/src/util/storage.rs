@@ -9,20 +9,6 @@ pub trait SideloadingStorage: Send + Sync {
     fn delete(&self, key: &str) -> Result<(), Report> {
         self.store(key, "")
     }
-
-    fn store_data(&self, key: &str, value: &[u8]) -> Result<(), Report> {
-        let encoded = BASE64_STANDARD.encode(value);
-        self.store(key, &encoded)
-    }
-
-    fn retrieve_data(&self, key: &str) -> Result<Option<Vec<u8>>, Report> {
-        if let Some(encoded) = self.retrieve(key)? {
-            let decoded = BASE64_STANDARD.decode(&encoded)?;
-            Ok(Some(decoded))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 pub fn new_storage() -> impl SideloadingStorage {
