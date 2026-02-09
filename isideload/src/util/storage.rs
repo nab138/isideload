@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use base64::prelude::*;
 use rootcause::prelude::*;
 
 pub trait SideloadingStorage: Send + Sync {

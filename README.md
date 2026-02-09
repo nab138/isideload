@@ -6,6 +6,12 @@ A Rust library for sideloading iOS applications using an Apple ID. Used in [Cros
 
 This branch is home to isideload-next, the next major version of isideload. It features a redesigned API, improved error handling, better entitlement handling, and more. It is not ready!
 
+## TODO
+
+- [ ] Signing apps
+- [ ] Installing apps
+- [ ] Remove dependency on ring
+
 ## Licensing
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

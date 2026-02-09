@@ -23,7 +23,7 @@ reqwest = { version = "0.13.1", features = ["json", "gzip"] }
 thiserror = "2.0.17"
 async-trait = "0.1.89"
 serde = "1.0.228"
-rand = "0.9.2"
+rand = "0.10.0"
 uuid = {version = "1.20.0", features = ["v4"] }
 tracing = "0.1.44"
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
@@ -42,5 +42,5 @@ aes-gcm = "0.11.0-rc.3"
 rsa = { version = "0.10.0-rc.15" }
 tokio = "1.49.0"
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
-x509-parser = "0.18.1"
+x509-certificate = "0.25"
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }

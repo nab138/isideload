@@ -1,7 +1,7 @@
 // Serialization/Desieralization borrowed from https://github.com/SideStore/apple-private-apis/blob/master/omnisette/src/remote_anisette_v3.rs
 
 use plist::Data;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

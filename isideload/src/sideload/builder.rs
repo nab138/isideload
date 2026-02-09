@@ -26,32 +26,58 @@ impl Display for TeamSelection {
     }
 }
 
+pub enum MaxCertsBehavior {
+    /// If the maximum number of certificates is reached, delete all existing certificates and create a new one
+    Revoke,
+    /// If the maximum number of certificates is reached, return an error instead of creating a new certificate
+    Error,
+}
+
 pub struct SideloaderBuilder {
-    team_selection: TeamSelection,
-    storage: Box<dyn SideloadingStorage>,
     developer_session: DeveloperSession,
+    apple_email: String,
+    team_selection: Option<TeamSelection>,
+    max_certs_behavior: Option<MaxCertsBehavior>,
+    storage: Option<Box<dyn SideloadingStorage>>,
+    machine_name: Option<String>,
 }
 
 impl SideloaderBuilder {
-    pub fn new(developer_session: DeveloperSession) -> Self {
+    pub fn new(developer_session: DeveloperSession, apple_email: String) -> Self {
         SideloaderBuilder {
-            team_selection: TeamSelection::First,
-            storage: Box::new(crate::util::storage::new_storage()),
+            team_selection: None,
+            storage: None,
             developer_session,
+            machine_name: None,
+            apple_email,
+            max_certs_behavior: None,
         }
     }
 
     pub fn team_selection(mut self, selection: TeamSelection) -> Self {
-        self.team_selection = selection;
+        self.team_selection = Some(selection);
         self
     }
 
     pub fn storage(mut self, storage: Box<dyn SideloadingStorage>) -> Self {
-        self.storage = storage;
+        self.storage = Some(storage);
+        self
+    }
+
+    pub fn machine_name(mut self, machine_name: String) -> Self {
+        self.machine_name = Some(machine_name);
         self
     }
 
     pub fn build(self) -> Sideloader {
-        Sideloader::new(self.team_selection, self.storage, self.developer_session)
+        Sideloader::new(
+            self.developer_session,
+            self.apple_email,
+            self.team_selection.unwrap_or(TeamSelection::First),
+            self.max_certs_behavior.unwrap_or(MaxCertsBehavior::Revoke),
+            self.machine_name.unwrap_or_else(|| "isideload".to_string()),
+            self.storage
+                .unwrap_or_else(|| Box::new(crate::util::storage::new_storage())),
+        )
     }
 }

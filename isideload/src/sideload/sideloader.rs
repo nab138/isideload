@@ -4,7 +4,7 @@ use crate::{
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
     },
-    sideload::TeamSelection,
+    sideload::{TeamSelection, builder::MaxCertsBehavior, certificate::CertificateIdentity},
     util::{device::IdeviceInfo, storage::SideloadingStorage},
 };
 
@@ -18,18 +18,27 @@ pub struct Sideloader {
     team_selection: TeamSelection,
     storage: Box<dyn SideloadingStorage>,
     dev_session: DeveloperSession,
+    machine_name: String,
+    apple_email: String,
+    max_certs_behavior: MaxCertsBehavior,
 }
 
 impl Sideloader {
     pub fn new(
-        team_selection: TeamSelection,
-        storage: Box<dyn SideloadingStorage>,
         dev_session: DeveloperSession,
+        apple_email: String,
+        team_selection: TeamSelection,
+        max_certs_behavior: MaxCertsBehavior,
+        machine_name: String,
+        storage: Box<dyn SideloadingStorage>,
     ) -> Self {
         Sideloader {
             team_selection,
             storage,
             dev_session,
+            machine_name,
+            apple_email,
+            max_certs_behavior,
         }
     }
 
@@ -45,6 +54,21 @@ impl Sideloader {
         self.dev_session
             .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
             .await?;
+
+        let cert_identity = CertificateIdentity::retrieve(
+            &self.machine_name,
+            &self.apple_email,
+            &mut self.dev_session,
+            &team,
+            self.storage.as_ref(),
+            &self.max_certs_behavior,
+        )
+        .await?;
+
+        // info!(
+        //     "Using certificate for machine {} with ID {}",
+        //     cert_identity.machine_name, cert_identity.machine_id
+        // );
 
         Ok(())
     }

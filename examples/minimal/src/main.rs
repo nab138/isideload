@@ -42,10 +42,10 @@ async fn main() {
         .login(apple_password, get_2fa_code)
         .await;
 
-    match &account {
-        Ok(a) => println!("Logged in. {}", a),
-        Err(e) => panic!("Failed to log in to Apple ID: {:?}", e),
-    }
+    // match &account {
+    //     Ok(a) => println!("Logged in. {}", a),
+    //     Err(e) => panic!("Failed to log in to Apple ID: {:?}", e),
+    // }
 
     let mut account = account.unwrap();
 
@@ -70,7 +70,7 @@ async fn main() {
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
-    let mut sideloader = SideloaderBuilder::new(dev_session)
+    let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::Prompt(|teams| {
             println!("Please select a team:");
             for (index, team) in teams.iter().enumerate() {
