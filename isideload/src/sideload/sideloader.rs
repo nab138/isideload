@@ -4,7 +4,7 @@ use crate::{
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
     },
-    sideload::{TeamSelection, builder::MaxCertsBehavior, certificate::CertificateIdentity},
+    sideload::{TeamSelection, builder::MaxCertsBehavior, cert_identity::CertificateIdentity},
     util::{device::IdeviceInfo, storage::SideloadingStorage},
 };
 
@@ -24,6 +24,9 @@ pub struct Sideloader {
 }
 
 impl Sideloader {
+    /// Construct a new `Sideloader` instance with the provided configuration
+    ///
+    /// See [`crate::sideload::SideloaderBuilder`] for more details and a more convenient way to construct a `Sideloader`.
     pub fn new(
         dev_session: DeveloperSession,
         apple_email: String,
@@ -42,6 +45,7 @@ impl Sideloader {
         }
     }
 
+    /// Sign and install an app
     pub async fn install_app(
         &mut self,
         device_provider: &impl IdeviceProvider,
@@ -73,6 +77,7 @@ impl Sideloader {
         Ok(())
     }
 
+    /// Get the developer team according to the configured team selection behavior
     pub async fn get_team(&mut self) -> Result<DeveloperTeam, Report> {
         let teams = self.dev_session.list_teams().await?;
         Ok(match teams.len() {

@@ -29,6 +29,7 @@ impl Display for TeamSelection {
     }
 }
 
+/// Behavior when the maximum number of development certificates is reached
 pub enum MaxCertsBehavior {
     /// If the maximum number of certificates is reached, revoke certs until it is possible to create a new certificate
     Revoke,
@@ -59,26 +60,41 @@ impl SideloaderBuilder {
         }
     }
 
+    /// Set the team selection behavior
+    ///
+    /// See [`TeamSelection`] for details.
     pub fn team_selection(mut self, selection: TeamSelection) -> Self {
         self.team_selection = Some(selection);
         self
     }
 
+    /// Set the storage backend for sideloading data
+    ///
+    /// An implementation using `keyring` is provided in the `keyring-storage` feature.
+    /// See [`SideloadingStorage`] for details.
+    ///
+    /// If not set, either keyring storage or in memory storage (not persisted across runs) will be used depending on if the `keyring-storage` feature is enabled.
     pub fn storage(mut self, storage: Box<dyn SideloadingStorage>) -> Self {
         self.storage = Some(storage);
         self
     }
 
+    /// Set the machine name to use for the development certificate
+    ///
+    /// This has no bearing on functionality but can be useful for users to identify where a certificate came from.
+    /// If not set, a default name of "isideload" will be used.
     pub fn machine_name(mut self, machine_name: String) -> Self {
         self.machine_name = Some(machine_name);
         self
     }
 
+    /// Set the behavior for when the maximum number of development certificates is reached
     pub fn max_certs_behavior(mut self, behavior: MaxCertsBehavior) -> Self {
         self.max_certs_behavior = Some(behavior);
         self
     }
 
+    /// Build the `Sideloader` instance with the provided configuration
     pub fn build(self) -> Sideloader {
         Sideloader::new(
             self.developer_session,
