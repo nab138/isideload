@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
 use crate::{
-    dev::{developer_session::DeveloperSession, teams::DeveloperTeam},
+    dev::{
+        certificates::DevelopmentCertificate, developer_session::DeveloperSession,
+        teams::DeveloperTeam,
+    },
     sideload::sideloader::Sideloader,
     util::storage::SideloadingStorage,
 };
@@ -27,10 +30,12 @@ impl Display for TeamSelection {
 }
 
 pub enum MaxCertsBehavior {
-    /// If the maximum number of certificates is reached, delete all existing certificates and create a new one
+    /// If the maximum number of certificates is reached, revoke certs until it is possible to create a new certificate
     Revoke,
     /// If the maximum number of certificates is reached, return an error instead of creating a new certificate
     Error,
+    /// If the maximum number of certificates is reached, prompt the user to select which certificates to revoke until it is possible to create a new certificate
+    Prompt(fn(&Vec<DevelopmentCertificate>) -> Option<Vec<DevelopmentCertificate>>),
 }
 
 pub struct SideloaderBuilder {
@@ -69,12 +74,17 @@ impl SideloaderBuilder {
         self
     }
 
+    pub fn max_certs_behavior(mut self, behavior: MaxCertsBehavior) -> Self {
+        self.max_certs_behavior = Some(behavior);
+        self
+    }
+
     pub fn build(self) -> Sideloader {
         Sideloader::new(
             self.developer_session,
             self.apple_email,
             self.team_selection.unwrap_or(TeamSelection::First),
-            self.max_certs_behavior.unwrap_or(MaxCertsBehavior::Revoke),
+            self.max_certs_behavior.unwrap_or(MaxCertsBehavior::Error),
             self.machine_name.unwrap_or_else(|| "isideload".to_string()),
             self.storage
                 .unwrap_or_else(|| Box::new(crate::util::storage::new_storage())),

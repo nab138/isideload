@@ -1,10 +1,24 @@
 use std::{collections::HashMap, sync::Mutex};
 
+use base64::prelude::*;
 use rootcause::prelude::*;
 
 pub trait SideloadingStorage: Send + Sync {
     fn store(&self, key: &str, value: &str) -> Result<(), Report>;
     fn retrieve(&self, key: &str) -> Result<Option<String>, Report>;
+
+    fn store_data(&self, key: &str, value: &[u8]) -> Result<(), Report> {
+        self.store(key, &BASE64_STANDARD.encode(value))
+    }
+
+    fn retrieve_data(&self, key: &str) -> Result<Option<Vec<u8>>, Report> {
+        if let Some(value) = self.retrieve(key)? {
+            Ok(Some(BASE64_STANDARD.decode(value)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn delete(&self, key: &str) -> Result<(), Report> {
         self.store(key, "")
     }
@@ -13,7 +27,7 @@ pub trait SideloadingStorage: Send + Sync {
 pub fn new_storage() -> impl SideloadingStorage {
     #[cfg(feature = "keyring-storage")]
     {
-        crate::util::keyring_storage::KeyringStorage::new()
+        crate::util::keyring_storage::KeyringStorage::default()
     }
     #[cfg(not(feature = "keyring-storage"))]
     {

@@ -63,7 +63,6 @@ impl AppleAccount {
         anisette_generator: AnisetteDataGenerator,
         debug: bool,
     ) -> Result<Self, Report> {
-        info!("Initializing apple account");
         if debug {
             warn!("Debug mode enabled: this is a security risk!");
         }

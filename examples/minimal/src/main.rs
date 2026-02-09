@@ -4,8 +4,11 @@ use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::AppleAccount,
-    dev::developer_session::DeveloperSession,
-    sideload::{SideloaderBuilder, TeamSelection},
+    dev::{
+        certificates::DevelopmentCertificate, developer_session::DeveloperSession,
+        teams::DeveloperTeam,
+    },
+    sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
 };
 
 use tracing::Level;
@@ -70,25 +73,58 @@ async fn main() {
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
+    let team_selection_prompt = |teams: &Vec<DeveloperTeam>| {
+        println!("Please select a team:");
+        for (index, team) in teams.iter().enumerate() {
+            println!(
+                "{}: {} ({})",
+                index + 1,
+                team.name.as_deref().unwrap_or("<Unnamed>"),
+                team.team_id
+            );
+        }
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let selection = input.trim().parse::<usize>().ok()?;
+        if selection == 0 || selection > teams.len() {
+            return None;
+        }
+        Some(teams[selection - 1].team_id.clone())
+    };
+
+    let cert_selection_prompt = |certs: &Vec<DevelopmentCertificate>| {
+        println!("Maximum number of certificates reached. Please select certificates to revoke:");
+        for (index, cert) in certs.iter().enumerate() {
+            println!(
+                "({}) {}: {}",
+                index + 1,
+                cert.name.as_deref().unwrap_or("<Unnamed>"),
+                cert.machine_name.as_deref().unwrap_or("<No Machine Name>"),
+            );
+        }
+        println!("Enter the numbers of the certificates to revoke, separated by commas:");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let selections: Vec<usize> = input
+            .trim()
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .filter(|&n| n > 0 && n <= certs.len())
+            .collect();
+        if selections.is_empty() {
+            return None;
+        }
+        Some(
+            selections
+                .into_iter()
+                .map(|n| certs[n - 1].clone())
+                .collect::<Vec<_>>(),
+        )
+    };
+
     let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
-        .team_selection(TeamSelection::Prompt(|teams| {
-            println!("Please select a team:");
-            for (index, team) in teams.iter().enumerate() {
-                println!(
-                    "{}: {} ({})",
-                    index + 1,
-                    team.name.as_deref().unwrap_or("<Unnamed>"),
-                    team.team_id
-                );
-            }
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            let selection = input.trim().parse::<usize>().ok()?;
-            if selection == 0 || selection > teams.len() {
-                return None;
-            }
-            Some(teams[selection - 1].team_id.clone())
-        }))
+        .team_selection(TeamSelection::Prompt(team_selection_prompt))
+        .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
         .build();
 
     let result = sideloader.install_app(&provider, app_path).await;
