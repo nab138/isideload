@@ -125,6 +125,7 @@ async fn main() {
     let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::Prompt(team_selection_prompt))
         .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
+        .machine_name("isideload-demo".to_string())
         .build();
 
     let result = sideloader.install_app(&provider, app_path).await;
