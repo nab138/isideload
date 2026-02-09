@@ -14,12 +14,16 @@ readme = "../README.md"
 default = ["install", "keyring-storage"]
 install = ["dep:idevice"]
 keyring-storage = ["keyring"]
+p12 = ["dep:p12-keystore"]
 
+# Unfortunately, dependencies are kinda a mess rn, since this requires a beta version of the srp crate.
+# Once that becomes stable, hopefuly duplicate dependencies should clean up.\
+# Until then, I will wince in pain every time I see how long the output of cargo tree -d is.
 [dependencies]
 idevice = { version = "0.1.52", optional = true }
 plist = "1.8"
-plist-macro = "0.1.3"
-reqwest = { version = "0.13.1", features = ["json", "gzip"] }
+plist-macro = "0.1.4"
+reqwest = { version = "0.13.2", features = ["json", "gzip"] }
 thiserror = "2.0.17"
 async-trait = "0.1.89"
 serde = "1.0.228"
@@ -42,5 +46,7 @@ aes-gcm = "0.11.0-rc.3"
 rsa = { version = "0.10.0-rc.15" }
 tokio = "1.49.0"
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
+# TODO: Fork to update dependencies (doubt it will ever be updated)
 x509-certificate = "0.25"
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
+p12-keystore = { optional = true, version = "0.2.0" }

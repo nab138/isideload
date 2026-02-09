@@ -5,4 +5,3 @@ default-members = ["isideload"]
 
 [patch.crates-io]
 rustls-platform-verifier = { git = "https://github.com/cstkingkey/rustls-platform-verifier", branch = "extra" }
-plist-macro = { git = "https://github.com/nab138/plist_macro", branch = "master" }
