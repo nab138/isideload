@@ -39,11 +39,44 @@ pub enum MaxCertsBehavior {
     Prompt(fn(&Vec<DevelopmentCertificate>) -> Option<Vec<DevelopmentCertificate>>),
 }
 
+/// The actual behavior choices for extensions (non-prompt variants)
+pub enum ExtensionsBehaviorChoice {
+    /// Use the main app id/profile for all sub-bundles
+    ReuseMain,
+    /// Create separate app ids/profiles for each sub-bundle
+    RegisterAll,
+    /// Remove all sub-bundles
+    RemoveExtensions,
+}
+
+/// Behavior used when an app contains sub bundles
+pub enum ExtensionsBehavior {
+    /// Use the main app id/profile for all sub-bundles
+    ReuseMain,
+    /// Create separate app ids/profiles for each sub-bundle
+    RegisterAll,
+    /// Remove all sub-bundles
+    RemoveExtensions,
+    /// Prompt the user to choose one of the above behaviors
+    Prompt(fn(&Vec<String>) -> ExtensionsBehaviorChoice),
+}
+
+impl From<ExtensionsBehaviorChoice> for ExtensionsBehavior {
+    fn from(choice: ExtensionsBehaviorChoice) -> Self {
+        match choice {
+            ExtensionsBehaviorChoice::ReuseMain => ExtensionsBehavior::ReuseMain,
+            ExtensionsBehaviorChoice::RegisterAll => ExtensionsBehavior::RegisterAll,
+            ExtensionsBehaviorChoice::RemoveExtensions => ExtensionsBehavior::RemoveExtensions,
+        }
+    }
+}
+
 pub struct SideloaderBuilder {
     developer_session: DeveloperSession,
     apple_email: String,
     team_selection: Option<TeamSelection>,
     max_certs_behavior: Option<MaxCertsBehavior>,
+    extensions_behavior: Option<ExtensionsBehavior>,
     storage: Option<Box<dyn SideloadingStorage>>,
     machine_name: Option<String>,
 }
@@ -57,6 +90,7 @@ impl SideloaderBuilder {
             machine_name: None,
             apple_email,
             max_certs_behavior: None,
+            extensions_behavior: None,
         }
     }
 
@@ -94,6 +128,11 @@ impl SideloaderBuilder {
         self
     }
 
+    pub fn extensions_behavior(mut self, behavior: ExtensionsBehavior) -> Self {
+        self.extensions_behavior = Some(behavior);
+        self
+    }
+
     /// Build the `Sideloader` instance with the provided configuration
     pub fn build(self) -> Sideloader {
         Sideloader::new(
@@ -104,6 +143,8 @@ impl SideloaderBuilder {
             self.machine_name.unwrap_or_else(|| "isideload".to_string()),
             self.storage
                 .unwrap_or_else(|| Box::new(crate::util::storage::new_storage())),
+            self.extensions_behavior
+                .unwrap_or(ExtensionsBehavior::RegisterAll),
         )
     }
 }

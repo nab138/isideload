@@ -5,7 +5,9 @@ use crate::{
         teams::{DeveloperTeam, TeamsApi},
     },
     sideload::{
-        TeamSelection, application::Application, builder::MaxCertsBehavior,
+        TeamSelection,
+        application::{Application, SpecialApp},
+        builder::{ExtensionsBehavior, MaxCertsBehavior},
         cert_identity::CertificateIdentity,
     },
     util::{device::IdeviceInfo, storage::SideloadingStorage},
@@ -24,6 +26,7 @@ pub struct Sideloader {
     machine_name: String,
     apple_email: String,
     max_certs_behavior: MaxCertsBehavior,
+    extensions_behavior: ExtensionsBehavior,
 }
 
 impl Sideloader {
@@ -37,6 +40,7 @@ impl Sideloader {
         max_certs_behavior: MaxCertsBehavior,
         machine_name: String,
         storage: Box<dyn SideloadingStorage>,
+        extensions_behavior: ExtensionsBehavior,
     ) -> Self {
         Sideloader {
             team_selection,
@@ -45,6 +49,7 @@ impl Sideloader {
             machine_name,
             apple_email,
             max_certs_behavior,
+            extensions_behavior,
         }
     }
 
@@ -73,9 +78,44 @@ impl Sideloader {
         .await?;
 
         let mut app = Application::new(app_path)?;
+        let special = app.get_special_app();
 
-        let is_sidestore = app.is_sidestore();
-        let is_lc_and_sidestore = app.is_lc_and_sidestore();
+        let main_bundle_id = app.main_bundle_id()?;
+        let main_app_name = app.main_app_name()?;
+        let main_app_id_str = format!("{}.{}", main_bundle_id, team.team_id);
+        app.update_bundle_id(&main_bundle_id, &main_app_id_str)?;
+        let mut app_ids = app
+            .register_app_ids(&self.extensions_behavior, &mut self.dev_session, &team)
+            .await?;
+        let main_app_id = match app_ids
+            .iter()
+            .find(|app_id| app_id.identifier == main_app_id_str)
+        {
+            Some(id) => id,
+            None => {
+                bail!(
+                    "Main app ID {} not found in registered app IDs",
+                    main_app_id_str
+                );
+            }
+        };
+
+        for app_id in app_ids.iter_mut() {
+            app_id
+                .ensure_group_feature(&mut self.dev_session, &team)
+                .await?;
+
+            // TODO: Increased memory entitlement
+        }
+
+        let group_identifier = format!(
+            "group.{}",
+            if Some(SpecialApp::SideStoreLc) == special {
+                format!("com.SideStore.SideStore.{}", team.team_id)
+            } else {
+                main_app_id_str.clone()
+            }
+        );
 
         Ok(())
     }

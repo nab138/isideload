@@ -8,9 +8,14 @@ This branch is home to isideload-next, the next major version of isideload. It f
 
 ## TODO
 
-- [ ] Signing apps
-- [ ] Installing apps
-- [ ] Remove dependency on ring
+Things left todo before the rewrite is considered finished
+
+- Download provisioning profiles
+- Signing apps
+- Installing apps
+(will superceed the original isideload at this point)
+- Remove dependency on ring
+- More parallelism/cachng for better performance
 
 ## Licensing
 

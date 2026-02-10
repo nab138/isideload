@@ -2,7 +2,12 @@
 // I'm planning on redoing this later to better handle entitlements, extensions, etc, but it will do for now
 
 use crate::SideloadError;
+use crate::dev::app_ids::{AppId, AppIdsApi};
+use crate::dev::developer_session::DeveloperSession;
+use crate::dev::teams::DeveloperTeam;
+use crate::sideload::builder::ExtensionsBehavior;
 use crate::sideload::bundle::Bundle;
+use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
@@ -73,14 +78,140 @@ impl Application {
         })
     }
 
-    pub fn is_sidestore(&self) -> bool {
-        self.bundle.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore"
-    }
+    pub fn get_special_app(&self) -> Option<SpecialApp> {
+        let special_app = match self.bundle.bundle_identifier().unwrap_or("") {
+            "com.rileytestut.AltStore" => Some(SpecialApp::AltStore),
+            "com.SideStore.SideStore" => Some(SpecialApp::SideStore),
+            _ => None,
+        };
+        if special_app.is_some() {
+            return special_app;
+        }
 
-    pub fn is_lc_and_sidestore(&self) -> bool {
-        self.bundle
+        if self
+            .bundle
             .frameworks()
             .iter()
             .any(|f| f.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore")
+        {
+            return Some(SpecialApp::SideStoreLc);
+        }
+
+        None
     }
+
+    pub fn main_bundle_id(&self) -> Result<String, Report> {
+        let str = self
+            .bundle
+            .bundle_identifier()
+            .ok_or_report()
+            .context("Failed to get main bundle identifier")?
+            .to_string();
+
+        Ok(str)
+    }
+
+    pub fn main_app_name(&self) -> Result<String, Report> {
+        let str = self
+            .bundle
+            .bundle_name()
+            .ok_or_report()
+            .context("Failed to get main app name")?
+            .to_string();
+
+        Ok(str)
+    }
+
+    pub fn update_bundle_id(
+        &mut self,
+        main_app_bundle_id: &str,
+        main_app_id_str: &str,
+    ) -> Result<(), Report> {
+        let extensions = self.bundle.app_extensions_mut();
+        for ext in extensions.iter_mut() {
+            if let Some(id) = ext.bundle_identifier() {
+                if !(id.starts_with(&main_app_bundle_id) && id.len() > main_app_bundle_id.len()) {
+                    bail!(SideloadError::InvalidBundle(format!(
+                        "Extension {} is not part of the main app bundle identifier: {}",
+                        ext.bundle_name().unwrap_or("Unknown"),
+                        id
+                    )));
+                } else {
+                    ext.set_bundle_identifier(&format!(
+                        "{}{}",
+                        main_app_id_str,
+                        &id[main_app_bundle_id.len()..]
+                    ));
+                }
+            }
+        }
+        self.bundle.set_bundle_identifier(&main_app_id_str);
+
+        Ok(())
+    }
+
+    pub async fn register_app_ids(
+        &self,
+        mode: &ExtensionsBehavior,
+        dev_session: &mut DeveloperSession,
+        team: &DeveloperTeam,
+    ) -> Result<Vec<AppId>, Report> {
+        let extension_refs: Vec<_> = self.bundle.app_extensions().iter().collect();
+        let mut bundles_with_app_id = vec![&self.bundle];
+        bundles_with_app_id.extend(extension_refs);
+
+        let list_app_ids_response = dev_session
+            .list_app_ids(&team, None)
+            .await
+            .context("Failed to list app IDs for the developer team")?;
+        let app_ids_to_register = match mode {
+            ExtensionsBehavior::RegisterAll => bundles_with_app_id
+                .iter()
+                .filter(|bundle| {
+                    let bundle_id = bundle.bundle_identifier().unwrap_or("");
+                    !list_app_ids_response
+                        .app_ids
+                        .iter()
+                        .any(|app_id| app_id.identifier == bundle_id)
+                })
+                .collect::<Vec<_>>(),
+            _ => todo!(),
+        };
+
+        if let Some(available) = list_app_ids_response.available_quantity
+            && app_ids_to_register.len() > available.try_into().unwrap()
+        {
+            bail!(
+                "Not enough available app IDs. {} are required, but only {} are available.",
+                app_ids_to_register.len(),
+                available
+            );
+        }
+
+        for bundle in app_ids_to_register {
+            let id = bundle.bundle_identifier().unwrap_or("");
+            let name = bundle.bundle_name().unwrap_or("");
+            dev_session.add_app_id(&team, name, id, None).await?;
+        }
+        let list_app_id_response = dev_session.list_app_ids(&team, None).await?;
+        let app_ids: Vec<_> = list_app_id_response
+            .app_ids
+            .into_iter()
+            .filter(|app_id| {
+                bundles_with_app_id
+                    .iter()
+                    .any(|bundle| app_id.identifier == bundle.bundle_identifier().unwrap_or(""))
+            })
+            .collect();
+
+        Ok(app_ids)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpecialApp {
+    SideStore,
+    SideStoreLc,
+    AltStore,
+    StikStore,
 }

@@ -4,7 +4,7 @@ use crate::{
         device_type::{DeveloperDeviceType, dev_url},
         teams::DeveloperTeam,
     },
-    util::plist::SensitivePlistAttachment,
+    util::plist::{PlistDataExtract, SensitivePlistAttachment},
 };
 use plist::{Data, Date, Dictionary, Value};
 use plist_macro::plist;
@@ -17,7 +17,7 @@ pub struct AppId {
     pub app_id_id: String,
     pub identifier: String,
     pub name: String,
-    pub features: Option<Dictionary>,
+    pub features: Dictionary,
     pub expiration_date: Option<Date>,
 }
 
@@ -176,5 +176,28 @@ pub trait AppIdsApi {
 impl AppIdsApi for DeveloperSession {
     fn developer_session(&mut self) -> &mut DeveloperSession {
         self
+    }
+}
+
+impl AppId {
+    pub async fn ensure_group_feature(
+        &mut self,
+        dev_session: &mut DeveloperSession,
+        team: &DeveloperTeam,
+    ) -> Result<(), Report> {
+        let app_group_feature_enabled = self.features.get_bool("APG3427HIY")?;
+
+        if !app_group_feature_enabled {
+            let body = plist!(dict {
+                "APG3427HIY": true,
+            });
+            let new_features = dev_session
+                .update_app_id(team, self, body, None)
+                .await?
+                .features;
+            self.features = new_features;
+        }
+
+        Ok(())
     }
 }

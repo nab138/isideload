@@ -55,6 +55,7 @@ pub trait PlistDataExtract {
     fn get_string(&self, key: &str) -> Result<String, Report>;
     fn get_signed_integer(&self, key: &str) -> Result<i64, Report>;
     fn get_dict(&self, key: &str) -> Result<&Dictionary, Report>;
+    fn get_bool(&self, key: &str) -> Result<bool, Report>;
     fn get_struct<T: DeserializeOwned>(&self, key: &str) -> Result<T, Report>;
 }
 
@@ -119,5 +120,12 @@ impl PlistDataExtract for Dictionary {
             ))
         })?;
         Ok(struct_data)
+    }
+
+    fn get_bool(&self, key: &str) -> Result<bool, Report> {
+        self.get(key).and_then(|v| v.as_boolean()).ok_or_else(|| {
+            report!("Plist missing boolean for key '{}'", key)
+                .attach(SensitivePlistAttachment::new(self.clone()))
+        })
     }
 }
