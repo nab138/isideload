@@ -4,7 +4,10 @@ use crate::{
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
     },
-    sideload::{TeamSelection, builder::MaxCertsBehavior, cert_identity::CertificateIdentity},
+    sideload::{
+        TeamSelection, application::Application, builder::MaxCertsBehavior,
+        cert_identity::CertificateIdentity,
+    },
     util::{device::IdeviceInfo, storage::SideloadingStorage},
 };
 
@@ -69,10 +72,10 @@ impl Sideloader {
         )
         .await?;
 
-        // info!(
-        //     "Using certificate for machine {} with ID {}",
-        //     cert_identity.machine_name, cert_identity.machine_id
-        // );
+        let mut app = Application::new(app_path)?;
+
+        let is_sidestore = app.is_sidestore();
+        let is_lc_and_sidestore = app.is_lc_and_sidestore();
 
         Ok(())
     }

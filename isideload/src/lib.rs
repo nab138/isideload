@@ -22,6 +22,9 @@ pub enum SideloadError {
 
     #[error("Developer error {0}: {1}")]
     DeveloperError(i64, String),
+
+    #[error("Invalid bundle: {0}")]
+    InvalidBundle(String),
 }
 
 // The default reqwest error formatter sucks and provides no info
