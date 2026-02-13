@@ -7,6 +7,7 @@ use crate::dev::{
 use plist_macro::plist;
 use rootcause::prelude::*;
 use serde::Deserialize;
+use tracing::info;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +91,28 @@ pub trait AppGroupsApi {
             .context("Failed to assign developer app group")?;
 
         Ok(())
+    }
+
+    async fn ensure_app_group(
+        &mut self,
+        team: &DeveloperTeam,
+        name: &str,
+        identifier: &str,
+        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
+    ) -> Result<AppGroup, Report> {
+        let device_type = device_type.into();
+        let groups = self.list_app_groups(team, device_type.clone()).await?;
+        let matching_group = groups.iter().find(|g| g.identifier == identifier);
+
+        if let Some(group) = matching_group {
+            Ok(group.clone())
+        } else {
+            info!("Adding application group");
+            let group = self
+                .add_app_group(team, name, identifier, device_type)
+                .await?;
+            Ok(group)
+        }
     }
 }
 

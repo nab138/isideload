@@ -1,5 +1,7 @@
 use crate::{
     dev::{
+        app_groups::AppGroupsApi,
+        app_ids::AppIdsApi,
         developer_session::DeveloperSession,
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
@@ -98,15 +100,8 @@ impl Sideloader {
                     main_app_id_str
                 );
             }
-        };
-
-        for app_id in app_ids.iter_mut() {
-            app_id
-                .ensure_group_feature(&mut self.dev_session, &team)
-                .await?;
-
-            // TODO: Increased memory entitlement
         }
+        .clone();
 
         let group_identifier = format!(
             "group.{}",
@@ -116,6 +111,28 @@ impl Sideloader {
                 main_app_id_str.clone()
             }
         );
+
+        let app_group = self
+            .dev_session
+            .ensure_app_group(&team, &main_app_name, &group_identifier, None)
+            .await?;
+
+        for app_id in app_ids.iter_mut() {
+            app_id
+                .ensure_group_feature(&mut self.dev_session, &team)
+                .await?;
+
+            self.dev_session
+                .assign_app_group(&team, &app_group, app_id, None)
+                .await?;
+
+            // TODO: Increased memory entitlement
+        }
+
+        let provisioning_profile = self
+            .dev_session
+            .download_team_provisioning_profile(&team, &main_app_id, None)
+            .await?;
 
         Ok(())
     }
