@@ -62,7 +62,8 @@ impl CertificateIdentity {
     }
 
     pub fn get_serial_number(&self) -> String {
-        self.certificate.serial_number_asn1().encode_hex()
+        let serial: String = self.certificate.serial_number_asn1().encode_hex();
+        serial.trim_start_matches('0').to_string()
     }
 
     pub async fn retrieve(
