@@ -129,10 +129,21 @@ impl Sideloader {
             // TODO: Increased memory entitlement
         }
 
+        app.apply_special_app_behavior(&special, &group_identifier, &cert_identity)
+            .await?;
+
         let provisioning_profile = self
             .dev_session
             .download_team_provisioning_profile(&team, &main_app_id, None)
             .await?;
+
+        app.bundle.write_info()?;
+        for ext in app.bundle.app_extensions_mut() {
+            ext.write_info()?;
+        }
+        for ext in app.bundle.frameworks_mut() {
+            ext.write_info()?;
+        }
 
         Ok(())
     }

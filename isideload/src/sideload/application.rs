@@ -7,10 +7,12 @@ use crate::dev::developer_session::DeveloperSession;
 use crate::dev::teams::DeveloperTeam;
 use crate::sideload::builder::ExtensionsBehavior;
 use crate::sideload::bundle::Bundle;
+use crate::sideload::cert_identity::CertificateIdentity;
 use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
 use zip::ZipArchive;
 
 pub struct Application {
@@ -205,6 +207,57 @@ impl Application {
             .collect();
 
         Ok(app_ids)
+    }
+
+    pub async fn apply_special_app_behavior(
+        &mut self,
+        special: &Option<SpecialApp>,
+        group_identifier: &str,
+        cert: &CertificateIdentity,
+    ) -> Result<(), Report> {
+        if special.is_none() {
+            return Ok(());
+        }
+        let special = special.as_ref().unwrap();
+
+        if special == &SpecialApp::SideStoreLc
+            || special == &SpecialApp::SideStore
+            || special == &SpecialApp::AltStore
+        {
+            self.bundle.app_info.insert(
+                "ALTAppGroups".to_string(),
+                plist::Value::Array(vec![plist::Value::String(group_identifier.to_string())]),
+            );
+
+            let target_bundle =
+                match special {
+                    SpecialApp::SideStoreLc => self.bundle.frameworks_mut().iter_mut().find(|fw| {
+                        fw.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore"
+                    }),
+                    _ => Some(&mut self.bundle),
+                };
+
+            if let Some(target_bundle) = target_bundle {
+                target_bundle.app_info.insert(
+                    "ALTCertificateID".to_string(),
+                    plist::Value::String(cert.get_serial_number()),
+                );
+
+                let p12_bytes = cert
+                    .as_p12(&cert.machine_id)
+                    .await
+                    .context("Failed to encode cert as p12")?;
+                let alt_cert_path = target_bundle.bundle_dir.join("ALTCertificate.p12");
+
+                let mut file = tokio::fs::File::create(&alt_cert_path)
+                    .await
+                    .context("Failed to create ALTCertificate.p12")?;
+                file.write_all(&p12_bytes)
+                    .await
+                    .context("Failed to write ALTCertificate.p12")?;
+            }
+        }
+        Ok(())
     }
 }
 

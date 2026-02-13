@@ -14,7 +14,6 @@ readme = "../README.md"
 default = ["install", "keyring-storage"]
 install = ["dep:idevice"]
 keyring-storage = ["keyring"]
-p12 = ["dep:p12-keystore"]
 
 # Unfortunately, dependencies are kinda a mess rn, since this requires a beta version of the srp crate.
 # Once that becomes stable, hopefuly duplicate dependencies should clean up.\
@@ -44,10 +43,10 @@ cbc = { version = "0.2.0-rc.3", features = ["alloc"] }
 aes = "0.9.0-rc.4"
 aes-gcm = "0.11.0-rc.3"
 rsa = { version = "0.10.0-rc.15" }
-tokio = "1.49.0"
+tokio = { version = "1.49.0", features = ["fs"] }
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
 # TODO: Fork to update dependencies (doubt it will ever be updated)
 x509-certificate = "0.25"
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
-p12-keystore = { optional = true, version = "0.2.0" }
+p12-keystore = "0.2.0"
 zip = { version = "7.4", default-features = false, features = ["deflate"] }

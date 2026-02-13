@@ -1,3 +1,4 @@
+use hex::ToHex;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
 use rootcause::prelude::*;
 use rsa::{
@@ -31,7 +32,6 @@ pub struct CertificateIdentity {
 impl CertificateIdentity {
     // This implementation was "heavily inspired" by Impactor (https://github.com/khcrysalis/Impactor/blob/main/crates/plume_core/src/utils/certificate.rs)
     // It's a little messy and I will clean it up when the rust crypto ecosystem gets through it's next release cycle and I can reduce duplicate dependencies
-    #[cfg(feature = "p12")]
     /// Exports the certificate and private key as a PKCS#12 archive
     /// If you plan to import into SideStore/AltStore, use the machine id as the password
     pub async fn as_p12(&self, password: &str) -> Result<Vec<u8>, Report> {
@@ -59,6 +59,10 @@ impl CertificateIdentity {
         let writer = keystore.writer(&password);
         let p12 = writer.write().context("Failed to write PKCS#12 archive")?;
         Ok(p12)
+    }
+
+    pub fn get_serial_number(&self) -> String {
+        self.certificate.serial_number_asn1().encode_hex()
     }
 
     pub async fn retrieve(
