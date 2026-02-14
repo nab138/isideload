@@ -1,3 +1,7 @@
+use apple_codesign::{
+    SigningSettings,
+    cryptography::{InMemoryPrivateKey, PrivateKey},
+};
 use hex::ToHex;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
 use rootcause::prelude::*;
@@ -9,7 +13,7 @@ use rsa::{
 
 use sha2::{Digest, Sha256};
 use tracing::{error, info};
-use x509_certificate::X509Certificate;
+use x509_certificate::CapturedX509Certificate;
 
 use crate::{
     SideloadError,
@@ -25,8 +29,9 @@ use crate::{
 pub struct CertificateIdentity {
     pub machine_id: String,
     pub machine_name: String,
-    pub certificate: X509Certificate,
+    pub certificate: CapturedX509Certificate,
     pub private_key: RsaPrivateKey,
+    pub signing_key: InMemoryPrivateKey,
 }
 
 impl CertificateIdentity {
@@ -63,7 +68,7 @@ impl CertificateIdentity {
 
     pub fn get_serial_number(&self) -> String {
         let serial: String = self.certificate.serial_number_asn1().encode_hex();
-        serial.trim_start_matches('0').to_string()
+        serial.trim_start_matches('0').to_string().to_uppercase()
     }
 
     pub async fn retrieve(
@@ -75,6 +80,7 @@ impl CertificateIdentity {
         max_certs_behavior: &MaxCertsBehavior,
     ) -> Result<Self, Report> {
         let pr = Self::retrieve_private_key(apple_email, storage).await?;
+        let signing_key = Self::build_signing_key(&pr)?;
 
         let found = Self::find_matching(&pr, machine_name, developer_session, team).await;
         if let Ok(Some((cert, x509_cert))) = found {
@@ -84,6 +90,7 @@ impl CertificateIdentity {
                 machine_name: cert.machine_name.clone().unwrap_or_default(),
                 certificate: x509_cert,
                 private_key: pr,
+                signing_key,
             });
         }
 
@@ -107,6 +114,7 @@ impl CertificateIdentity {
             machine_name: cert.machine_name.clone().unwrap_or_default(),
             certificate: x509_cert,
             private_key: pr,
+            signing_key,
         })
     }
 
@@ -139,7 +147,7 @@ impl CertificateIdentity {
         machine_name: &str,
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
-    ) -> Result<Option<(DevelopmentCertificate, X509Certificate)>, Report> {
+    ) -> Result<Option<(DevelopmentCertificate, CapturedX509Certificate)>, Report> {
         let public_key_der = private_key
             .to_public_key()
             .to_pkcs1_der()?
@@ -156,7 +164,7 @@ impl CertificateIdentity {
             })
         {
             let x509_cert =
-                X509Certificate::from_der(cert.cert_content.as_ref().unwrap().as_ref())?;
+                CapturedX509Certificate::from_der(cert.cert_content.as_ref().unwrap().as_ref())?;
 
             if public_key_der == x509_cert.public_key_data().as_ref() {
                 return Ok(Some((cert.clone(), x509_cert)));
@@ -172,7 +180,7 @@ impl CertificateIdentity {
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
         max_certs_behavior: &MaxCertsBehavior,
-    ) -> Result<(DevelopmentCertificate, X509Certificate), Report> {
+    ) -> Result<(DevelopmentCertificate, CapturedX509Certificate), Report> {
         let csr = Self::build_csr(private_key).context("Failed to generate CSR")?;
 
         let mut i = 0;
@@ -196,7 +204,7 @@ impl CertificateIdentity {
                             report!("Failed to find certificate after submitting CSR")
                         })?;
 
-                    let x509_cert = X509Certificate::from_der(
+                    let x509_cert = CapturedX509Certificate::from_der(
                         apple_cert
                             .cert_content
                             .as_ref()
@@ -264,6 +272,11 @@ impl CertificateIdentity {
         Ok(params.serialize_request(&subject_key)?.pem()?)
     }
 
+    fn build_signing_key(private_key: &RsaPrivateKey) -> Result<InMemoryPrivateKey, Report> {
+        let pkcs8 = private_key.to_pkcs8_der()?;
+        Ok(InMemoryPrivateKey::from_pkcs8_der(pkcs8.as_bytes())?)
+    }
+
     async fn revoke_others(
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
@@ -309,5 +322,19 @@ impl CertificateIdentity {
                 Ok(())
             }
         }
+    }
+
+    pub fn setup_signing_settings<'a>(
+        &'a self,
+        settings: &mut SigningSettings<'a>,
+    ) -> Result<(), Report> {
+        settings.set_signing_key(
+            self.signing_key.as_key_info_signer(),
+            self.certificate.clone(),
+        );
+        settings.chain_apple_certificates();
+        settings.set_team_id_from_signing_certificate();
+
+        Ok(())
     }
 }

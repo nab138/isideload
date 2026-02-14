@@ -10,12 +10,11 @@ This branch is home to isideload-next, the next major version of isideload. It f
 
 Things left todo before the rewrite is considered finished
 
-- Download provisioning profiles
-- Signing apps
-- Installing apps
-(will superceed the original isideload at this point)
-- Remove dependency on ring
-- More parallelism/cachng for better performance
+- Proper entitlement handling
+  - actually parse macho files and stuff, right now it just uses the bare minimum and applies extra entitlements for livecontainer
+- Remove dependency on ring and reduce duplicate dependencies
+  - partially just need to wait for the rust crypto ecosystem to get through another release cycle
+- More parallelism/caching for better performance
 
 ## Licensing
 

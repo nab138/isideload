@@ -9,16 +9,19 @@ use crate::{
     sideload::{
         TeamSelection,
         application::{Application, SpecialApp},
-        builder::{ExtensionsBehavior, MaxCertsBehavior},
+        builder::MaxCertsBehavior,
         cert_identity::CertificateIdentity,
     },
-    util::{device::IdeviceInfo, storage::SideloadingStorage},
+    util::{device::IdeviceInfo, plist::PlistDataExtract, storage::SideloadingStorage},
 };
 
 use std::path::PathBuf;
 
+use apple_codesign::{SigningSettings, UnifiedSigner};
 use idevice::provider::IdeviceProvider;
-use rootcause::prelude::*;
+use plist::Dictionary;
+use plist_macro::plist_to_xml_string;
+use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
 pub struct Sideloader {
@@ -28,7 +31,7 @@ pub struct Sideloader {
     machine_name: String,
     apple_email: String,
     max_certs_behavior: MaxCertsBehavior,
-    extensions_behavior: ExtensionsBehavior,
+    //extensions_behavior: ExtensionsBehavior,
 }
 
 impl Sideloader {
@@ -42,7 +45,7 @@ impl Sideloader {
         max_certs_behavior: MaxCertsBehavior,
         machine_name: String,
         storage: Box<dyn SideloadingStorage>,
-        extensions_behavior: ExtensionsBehavior,
+        //extensions_behavior: ExtensionsBehavior,
     ) -> Self {
         Sideloader {
             team_selection,
@@ -51,24 +54,20 @@ impl Sideloader {
             machine_name,
             apple_email,
             max_certs_behavior,
-            extensions_behavior,
+            //extensions_behavior,
         }
     }
 
     /// Sign and install an app
-    pub async fn install_app(
+    pub async fn sign_app(
         &mut self,
-        device_provider: &impl IdeviceProvider,
         app_path: PathBuf,
-    ) -> Result<(), Report> {
-        let device_info = IdeviceInfo::from_device(device_provider).await?;
-
-        let team = self.get_team().await?;
-
-        self.dev_session
-            .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
-            .await?;
-
+        team: Option<DeveloperTeam>,
+    ) -> Result<PathBuf, Report> {
+        let team = match team {
+            Some(t) => t,
+            None => self.get_team().await?,
+        };
         let cert_identity = CertificateIdentity::retrieve(
             &self.machine_name,
             &self.apple_email,
@@ -87,7 +86,10 @@ impl Sideloader {
         let main_app_id_str = format!("{}.{}", main_bundle_id, team.team_id);
         app.update_bundle_id(&main_bundle_id, &main_app_id_str)?;
         let mut app_ids = app
-            .register_app_ids(&self.extensions_behavior, &mut self.dev_session, &team)
+            .register_app_ids(
+                /*&self.extensions_behavior, */ &mut self.dev_session,
+                &team,
+            )
             .await?;
         let main_app_id = match app_ids
             .iter()
@@ -130,7 +132,8 @@ impl Sideloader {
         }
 
         app.apply_special_app_behavior(&special, &group_identifier, &cert_identity)
-            .await?;
+            .await
+            .context("Failed to modify app bundle")?;
 
         let provisioning_profile = self
             .dev_session
@@ -145,9 +148,67 @@ impl Sideloader {
             ext.write_info()?;
         }
 
-        Ok(())
+        tokio::fs::write(
+            app.bundle.bundle_dir.join("embedded.mobileprovision"),
+            provisioning_profile.encoded_profile.as_ref(),
+        )
+        .await?;
+
+        let mut settings = Self::signing_settings(&cert_identity)?;
+        let entitlements: Dictionary = Self::entitlements_from_prov(
+            provisioning_profile.encoded_profile.as_ref(),
+            &special,
+            &team,
+        )?;
+
+        settings
+            .set_entitlements_xml(
+                apple_codesign::SettingsScope::Main,
+                plist_to_xml_string(&entitlements),
+            )
+            .context("Failed to set entitlements XML")?;
+        let signer = UnifiedSigner::new(settings);
+
+        for bundle in app.bundle.collect_bundles_sorted() {
+            info!("Signing bundle {}", bundle.bundle_dir.display());
+            signer
+                .sign_path_in_place(&bundle.bundle_dir)
+                .context(format!(
+                    "Failed to sign bundle: {}",
+                    bundle.bundle_dir.display()
+                ))?;
+        }
+
+        info!("App signed!");
+
+        Ok(app.bundle.bundle_dir.clone())
     }
 
+    #[cfg(feature = "install")]
+    pub async fn install_app(
+        &mut self,
+        device_provider: &impl IdeviceProvider,
+        app_path: PathBuf,
+    ) -> Result<(), Report> {
+        let device_info = IdeviceInfo::from_device(device_provider).await?;
+
+        let team = self.get_team().await?;
+        self.dev_session
+            .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
+            .await?;
+
+        let signed_app_path = self.sign_app(app_path, Some(team)).await?;
+
+        info!("Installing...");
+
+        crate::sideload::install::install_app(device_provider, &signed_app_path, |progress| {
+            info!("Installing: {}%", progress);
+        })
+        .await
+        .context("Failed to install app on device")?;
+
+        Ok(())
+    }
     /// Get the developer team according to the configured team selection behavior
     pub async fn get_team(&mut self) -> Result<DeveloperTeam, Report> {
         let teams = self.dev_session.list_teams().await?;
@@ -174,5 +235,65 @@ impl Sideloader {
                 }
             }
         })
+    }
+
+    pub fn signing_settings<'a>(
+        cert: &'a CertificateIdentity,
+    ) -> Result<SigningSettings<'a>, Report> {
+        let mut settings = SigningSettings::default();
+
+        cert.setup_signing_settings(&mut settings)?;
+        settings.set_for_notarization(false);
+        settings.set_shallow(true);
+
+        Ok(settings)
+    }
+
+    fn entitlements_from_prov(
+        data: &[u8],
+        special: &Option<SpecialApp>,
+        team: &DeveloperTeam,
+    ) -> Result<Dictionary, Report> {
+        let start = data
+            .windows(6)
+            .position(|w| w == b"<plist")
+            .ok_or_report()?;
+        let end = data
+            .windows(8)
+            .rposition(|w| w == b"</plist>")
+            .ok_or_report()?
+            + 8;
+        let plist_data = &data[start..end];
+        let plist = plist::Value::from_reader_xml(plist_data)?;
+
+        let mut entitlements = plist
+            .as_dictionary()
+            .ok_or_report()?
+            .get_dict("Entitlements")?
+            .clone();
+
+        if matches!(
+            special,
+            Some(SpecialApp::SideStoreLc) | Some(SpecialApp::LiveContainer)
+        ) {
+            let mut keychain_access = vec![plist::Value::String(format!(
+                "{}.com.kdt.livecontainer.shared",
+                team.team_id
+            ))];
+
+            for number in 1..128 {
+                keychain_access.push(plist::Value::String(format!(
+                    "{}.com.kdt.livecontainer.shared.{}",
+                    team.team_id, number
+                )));
+            }
+
+            entitlements.insert(
+                "keychain-access-groups".to_string(),
+                plist::Value::Array(keychain_access),
+            );
+        }
+
+        Ok(entitlements)
     }
 }

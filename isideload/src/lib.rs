@@ -1,3 +1,4 @@
+use idevice::IdeviceError;
 use rootcause::{
     hooks::{Hooks, context_formatter::ContextFormatterHook},
     prelude::*,
@@ -25,6 +26,9 @@ pub enum SideloadError {
 
     #[error("Invalid bundle: {0}")]
     InvalidBundle(String),
+
+    #[error(transparent)]
+    IdeviceError(#[from] IdeviceError),
 }
 
 // The default reqwest error formatter sucks and provides no info

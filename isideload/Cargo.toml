@@ -19,7 +19,7 @@ keyring-storage = ["keyring"]
 # Once that becomes stable, hopefuly duplicate dependencies should clean up.\
 # Until then, I will wince in pain every time I see how long the output of cargo tree -d is.
 [dependencies]
-idevice = { version = "0.1.52", optional = true }
+idevice = { version = "0.1.52", optional = true, features = ["afc", "installation_proxy"]}
 plist = "1.8"
 plist-macro = "0.1.4"
 reqwest = { version = "0.13.2", features = ["json", "gzip"] }
@@ -50,3 +50,4 @@ x509-certificate = "0.25"
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
 p12-keystore = "0.2.0"
 zip = { version = "7.4", default-features = false, features = ["deflate"] }
+apple-codesign = { path = "../../plume-apple-platform-rs/apple-codesign", default-features = false}

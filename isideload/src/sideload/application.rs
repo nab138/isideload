@@ -5,7 +5,6 @@ use crate::SideloadError;
 use crate::dev::app_ids::{AppId, AppIdsApi};
 use crate::dev::developer_session::DeveloperSession;
 use crate::dev::teams::DeveloperTeam;
-use crate::sideload::builder::ExtensionsBehavior;
 use crate::sideload::bundle::Bundle;
 use crate::sideload::cert_identity::CertificateIdentity;
 use rootcause::option_ext::OptionExt;
@@ -13,6 +12,7 @@ use rootcause::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
+use tracing::info;
 use zip::ZipArchive;
 
 pub struct Application {
@@ -81,7 +81,8 @@ impl Application {
     }
 
     pub fn get_special_app(&self) -> Option<SpecialApp> {
-        let special_app = match self.bundle.bundle_identifier().unwrap_or("") {
+        let bundle_id = self.bundle.bundle_identifier().unwrap_or("");
+        let special_app = match bundle_id {
             "com.rileytestut.AltStore" => Some(SpecialApp::AltStore),
             "com.SideStore.SideStore" => Some(SpecialApp::SideStore),
             _ => None,
@@ -97,6 +98,10 @@ impl Application {
             .any(|f| f.bundle_identifier().unwrap_or("") == "com.SideStore.SideStore")
         {
             return Some(SpecialApp::SideStoreLc);
+        }
+
+        if bundle_id == "com.kdt.livecontainer" {
+            return Some(SpecialApp::LiveContainer);
         }
 
         None
@@ -154,7 +159,7 @@ impl Application {
 
     pub async fn register_app_ids(
         &self,
-        mode: &ExtensionsBehavior,
+        //mode: &ExtensionsBehavior,
         dev_session: &mut DeveloperSession,
         team: &DeveloperTeam,
     ) -> Result<Vec<AppId>, Report> {
@@ -166,19 +171,16 @@ impl Application {
             .list_app_ids(&team, None)
             .await
             .context("Failed to list app IDs for the developer team")?;
-        let app_ids_to_register = match mode {
-            ExtensionsBehavior::RegisterAll => bundles_with_app_id
-                .iter()
-                .filter(|bundle| {
-                    let bundle_id = bundle.bundle_identifier().unwrap_or("");
-                    !list_app_ids_response
-                        .app_ids
-                        .iter()
-                        .any(|app_id| app_id.identifier == bundle_id)
-                })
-                .collect::<Vec<_>>(),
-            _ => todo!(),
-        };
+        let app_ids_to_register = bundles_with_app_id
+            .iter()
+            .filter(|bundle| {
+                let bundle_id = bundle.bundle_identifier().unwrap_or("");
+                !list_app_ids_response
+                    .app_ids
+                    .iter()
+                    .any(|app_id| app_id.identifier == bundle_id)
+            })
+            .collect::<Vec<_>>();
 
         if let Some(available) = list_app_ids_response.available_quantity
             && app_ids_to_register.len() > available.try_into().unwrap()
@@ -220,10 +222,11 @@ impl Application {
         }
         let special = special.as_ref().unwrap();
 
-        if special == &SpecialApp::SideStoreLc
-            || special == &SpecialApp::SideStore
-            || special == &SpecialApp::AltStore
-        {
+        if matches!(
+            special,
+            SpecialApp::SideStoreLc | SpecialApp::SideStore | SpecialApp::AltStore
+        ) {
+            info!("Injecting certificate for {}", special);
             self.bundle.app_info.insert(
                 "ALTAppGroups".to_string(),
                 plist::Value::Array(vec![plist::Value::String(group_identifier.to_string())]),
@@ -265,6 +268,20 @@ impl Application {
 pub enum SpecialApp {
     SideStore,
     SideStoreLc,
+    LiveContainer,
     AltStore,
     StikStore,
+}
+
+// impl display
+impl std::fmt::Display for SpecialApp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpecialApp::SideStore => write!(f, "SideStore"),
+            SpecialApp::SideStoreLc => write!(f, "SideStore+LiveContainer"),
+            SpecialApp::LiveContainer => write!(f, "LiveContainer"),
+            SpecialApp::AltStore => write!(f, "AltStore"),
+            SpecialApp::StikStore => write!(f, "StikStore"),
+        }
+    }
 }

@@ -10,7 +10,7 @@ use std::{
 
 use crate::SideloadError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Bundle {
     pub app_info: Dictionary,
     pub bundle_dir: PathBuf,
@@ -133,6 +133,50 @@ impl Bundle {
             SideloadError::InvalidBundle("Failed to write Info.plist".to_string()),
         )?;
         Ok(())
+    }
+
+    fn from_dylib_path(dylib_path: PathBuf) -> Self {
+        Self {
+            app_info: Dictionary::new(),
+            bundle_dir: dylib_path,
+            app_extensions: Vec::new(),
+            frameworks: Vec::new(),
+            _libraries: Vec::new(),
+        }
+    }
+
+    fn collect_dylib_bundles(&self) -> Vec<Bundle> {
+        self._libraries
+            .iter()
+            .map(|relative| Self::from_dylib_path(self.bundle_dir.join(relative)))
+            .collect()
+    }
+
+    fn collect_nested_bundles_into(&self, bundles: &mut Vec<Bundle>) {
+        for bundle in &self.app_extensions {
+            bundles.push(bundle.clone());
+            bundle.collect_nested_bundles_into(bundles);
+        }
+
+        for bundle in &self.frameworks {
+            bundles.push(bundle.clone());
+            bundle.collect_nested_bundles_into(bundles);
+        }
+    }
+
+    pub fn collect_nested_bundles(&self) -> Vec<Bundle> {
+        let mut bundles = Vec::new();
+        self.collect_nested_bundles_into(&mut bundles);
+        bundles.extend(self.collect_dylib_bundles());
+        bundles
+    }
+
+    pub fn collect_bundles_sorted(&self) -> Vec<Bundle> {
+        let mut bundles = self.collect_nested_bundles();
+        bundles.push(self.clone());
+        bundles.sort_by_key(|b| b.bundle_dir.components().count());
+        bundles.reverse();
+        bundles
     }
 }
 
