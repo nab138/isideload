@@ -30,5 +30,5 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - The [idevice](https://github.com/jkcoxson/idevice) crate is used to communicate with the device
 - A [modified version of apple-platform-rs](https://github.com/nab138/isideload-apple-platform-rs) was used for codesigning, based off [plume-apple-platform-rs](https://github.com/plumeimpactor/plume-apple-platform-rs)
-- [Sideloader](https://github.com/Dadoum/Sideloader) was used as a reference for how some of the private API endpoints work
-- [Impactor](https://github.com/khcrysalis/Impactor) was used as a reference for some cryptography code
+- [Impactor](https://github.com/khcrysalis/Impactor) was used as a reference for cryptography, codesigning, and provision file parsing.
+- [Sideloader](https://github.com/Dadoum/Sideloader) was used as a reference for how apple private developer endpoints work
