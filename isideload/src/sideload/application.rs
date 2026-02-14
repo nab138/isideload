@@ -208,6 +208,7 @@ impl Application {
             })
             .collect();
 
+        info!("Registered app IDs");
         Ok(app_ids)
     }
 
