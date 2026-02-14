@@ -39,6 +39,12 @@ pub struct InMemoryStorage {
     storage: Mutex<HashMap<String, String>>,
 }
 
+impl Default for InMemoryStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryStorage {
     pub fn new() -> Self {
         InMemoryStorage {

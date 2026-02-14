@@ -137,7 +137,7 @@ impl Application {
         let extensions = self.bundle.app_extensions_mut();
         for ext in extensions.iter_mut() {
             if let Some(id) = ext.bundle_identifier() {
-                if !(id.starts_with(&main_app_bundle_id) && id.len() > main_app_bundle_id.len()) {
+                if !(id.starts_with(main_app_bundle_id) && id.len() > main_app_bundle_id.len()) {
                     bail!(SideloadError::InvalidBundle(format!(
                         "Extension {} is not part of the main app bundle identifier: {}",
                         ext.bundle_name().unwrap_or("Unknown"),
@@ -152,7 +152,7 @@ impl Application {
                 }
             }
         }
-        self.bundle.set_bundle_identifier(&main_app_id_str);
+        self.bundle.set_bundle_identifier(main_app_id_str);
 
         Ok(())
     }
@@ -168,7 +168,7 @@ impl Application {
         bundles_with_app_id.extend(extension_refs);
 
         let list_app_ids_response = dev_session
-            .list_app_ids(&team, None)
+            .list_app_ids(team, None)
             .await
             .context("Failed to list app IDs for the developer team")?;
         let app_ids_to_register = bundles_with_app_id
@@ -195,9 +195,9 @@ impl Application {
         for bundle in app_ids_to_register {
             let id = bundle.bundle_identifier().unwrap_or("");
             let name = bundle.bundle_name().unwrap_or("");
-            dev_session.add_app_id(&team, name, id, None).await?;
+            dev_session.add_app_id(team, name, id, None).await?;
         }
-        let list_app_id_response = dev_session.list_app_ids(&team, None).await?;
+        let list_app_id_response = dev_session.list_app_ids(team, None).await?;
         let app_ids: Vec<_> = list_app_id_response
             .app_ids
             .into_iter()

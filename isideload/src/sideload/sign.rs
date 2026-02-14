@@ -23,8 +23,8 @@ pub fn sign(
     let mut settings = signing_settings(cert_identity)?;
     let entitlements: Dictionary = entitlements_from_prov(
         provisioning_profile.encoded_profile.as_ref(),
-        &special,
-        &team,
+        special,
+        team,
     )?;
 
     settings

@@ -61,7 +61,7 @@ impl CertificateIdentity {
             p12_keystore::KeyStoreEntry::PrivateKeyChain(key_chain),
         );
 
-        let writer = keystore.writer(&password);
+        let writer = keystore.writer(password);
         let p12 = writer.write().context("Failed to write PKCS#12 archive")?;
         Ok(p12)
     }
@@ -127,16 +127,16 @@ impl CertificateIdentity {
         let email_hash = hex::encode(hasher.finalize());
 
         let private_key = storage.retrieve_data(&format!("{}/key", email_hash))?;
-        if private_key.is_some() {
+        if let Some(priv_key) = private_key {
             info!("Using existing private key from storage");
-            return Ok(RsaPrivateKey::from_pkcs8_der(&private_key.unwrap())?);
+            return Ok(RsaPrivateKey::from_pkcs8_der(&priv_key)?);
         }
 
         let mut rng = rand::rng();
         let private_key = RsaPrivateKey::new(&mut rng, 2048)?;
         storage.store_data(
             &format!("{}/key", email_hash),
-            &private_key.to_pkcs8_der()?.as_bytes(),
+            private_key.to_pkcs8_der()?.as_bytes(),
         )?;
 
         Ok(private_key)
@@ -239,7 +239,7 @@ impl CertificateIdentity {
                                     *code,
                                     "Maximum number of certificates reached".to_string(),
                                 ),
-                                &mut existing_certs.as_mut().unwrap(),
+                                existing_certs.as_mut().unwrap(),
                             )
                             .await?;
                         } else {
@@ -297,7 +297,7 @@ impl CertificateIdentity {
                     Ok(())
                 } else {
                     error!("No more certificates to revoke but still hitting max certs error");
-                    return Err(error.into());
+                    Err(error.into())
                 }
             }
             MaxCertsBehavior::Error => Err(error.into()),
