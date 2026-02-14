@@ -8,6 +8,7 @@ use crate::{
 };
 use plist::{Data, Date, Dictionary, Value};
 use plist_macro::plist;
+use reqwest::header::HeaderValue;
 use rootcause::prelude::*;
 use serde::Deserialize;
 
@@ -170,6 +171,41 @@ pub trait AppIdsApi {
             .context("Failed to download provisioning profile")?;
 
         Ok(response)
+    }
+
+    async fn add_increased_memory_limit(
+        &mut self,
+        team: &DeveloperTeam,
+        app_id: &AppId,
+    ) -> Result<(), Report> {
+        let dev_session = self.developer_session();
+
+        let mut headers = dev_session.get_headers().await?;
+        headers.insert(
+            "Content-Type",
+            HeaderValue::from_static("application/vnd.api+json"),
+        );
+        headers.insert(
+            "Accept",
+            HeaderValue::from_static("application/vnd.api+json"),
+        );
+
+        dev_session
+                .get_grandslam_client()
+                .patch(&format!(
+                    "https://developerservices2.apple.com/services/v1/bundleIds/{}",
+                    app_id.app_id_id
+                ))?
+                .headers(headers)
+                .body(format!(
+                "{{\"data\":{{\"relationships\":{{\"bundleIdCapabilities\":{{\"data\":[{{\"relationships\":{{\"capability\":{{\"data\":{{\"id\":\"INCREASED_MEMORY_LIMIT\",\"type\":\"capabilities\"}}}}}},\"type\":\"bundleIdCapabilities\",\"attributes\":{{\"settings\":[],\"enabled\":true}}}}]}}}},\"id\":\"{}\",\"attributes\":{{\"hasExclusiveManagedCapabilities\":false,\"teamId\":\"{}\",\"bundleType\":\"bundle\",\"identifier\":\"{}\",\"seedId\":\"{}\",\"name\":\"{}\"}},\"type\":\"bundleIds\"}}}}",
+                app_id.app_id_id, team.team_id, app_id.identifier, team.team_id, app_id.name
+            ))
+                .send()
+                .await.context("Failed to request increased memory entitlement")?
+                .error_for_status().context("Failed to add increased memory entitlement")?;
+
+        Ok(())
     }
 }
 

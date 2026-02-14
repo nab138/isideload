@@ -132,7 +132,7 @@ async fn main() {
         .machine_name("isideload-minimal".to_string())
         .build();
 
-    let result = sideloader.install_app(&provider, app_path).await;
+    let result = sideloader.install_app(&provider, app_path, true).await;
     match result {
         Ok(_) => println!("App installed successfully"),
         Err(e) => panic!("Failed to install app: {:?}", e),

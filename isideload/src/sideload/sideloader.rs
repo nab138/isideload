@@ -63,6 +63,8 @@ impl Sideloader {
         &mut self,
         app_path: PathBuf,
         team: Option<DeveloperTeam>,
+        // this will be replaced with proper entitlement handling later
+        increased_memory_limit: bool,
     ) -> Result<PathBuf, Report> {
         let team = match team {
             Some(t) => t,
@@ -128,7 +130,11 @@ impl Sideloader {
                 .assign_app_group(&team, &app_group, app_id, None)
                 .await?;
 
-            // TODO: Increased memory entitlement
+            if increased_memory_limit {
+                self.dev_session
+                    .add_increased_memory_limit(&team, app_id)
+                    .await?;
+            }
         }
 
         app.apply_special_app_behavior(&special, &group_identifier, &cert_identity)
@@ -189,6 +195,7 @@ impl Sideloader {
         &mut self,
         device_provider: &impl IdeviceProvider,
         app_path: PathBuf,
+        increased_memory_limit: bool,
     ) -> Result<(), Report> {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
@@ -197,7 +204,9 @@ impl Sideloader {
             .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
             .await?;
 
-        let signed_app_path = self.sign_app(app_path, Some(team)).await?;
+        let signed_app_path = self
+            .sign_app(app_path, Some(team), increased_memory_limit)
+            .await?;
 
         info!("Installing...");
 

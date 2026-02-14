@@ -97,6 +97,15 @@ impl GrandSlam {
         Ok(builder)
     }
 
+    pub fn patch(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+        let builder = self
+            .client
+            .patch(url)
+            .headers(Self::base_headers(&self.client_info, false)?);
+
+        Ok(builder)
+    }
+
     pub async fn plist_request(
         &self,
         url: &str,

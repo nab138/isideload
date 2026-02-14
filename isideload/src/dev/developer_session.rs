@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use plist::Dictionary;
 use plist_macro::{plist, plist_to_xml_string};
+use reqwest::header::{HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use serde::de::DeserializeOwned;
 use tracing::{error, warn};
@@ -65,6 +66,26 @@ impl DeveloperSession {
         ))
     }
 
+    pub async fn get_headers(&mut self) -> Result<HeaderMap, Report> {
+        let mut headers = self
+            .anisette_generator
+            .get_anisette_data(self.client.clone())
+            .await?
+            .get_header_map();
+
+        headers.insert(
+            "X-Apple-GS-Token",
+            HeaderValue::from_str(&self.token.token)?,
+        );
+        headers.insert("X-Apple-I-Identity-Id", HeaderValue::from_str(&self.adsid)?);
+
+        Ok(headers)
+    }
+
+    pub fn get_grandslam_client(&self) -> Arc<GrandSlam> {
+        self.client.clone()
+    }
+
     async fn send_dev_request_internal(
         &mut self,
         url: &str,
@@ -85,14 +106,7 @@ impl DeveloperSession {
             .client
             .post(url)?
             .body(plist_to_xml_string(&body))
-            .header("X-Apple-GS-Token", &self.token.token)
-            .header("X-Apple-I-Identity-Id", &self.adsid)
-            .headers(
-                self.anisette_generator
-                    .get_anisette_data(self.client.clone())
-                    .await?
-                    .get_header_map(),
-            )
+            .headers(self.get_headers().await?)
             .send()
             .await?
             .error_for_status()
