@@ -68,9 +68,7 @@ async fn main() {
         panic!("No devices found");
     }
 
-    let provider = devs
-        .iter()
-        .next()
+    let provider = devs.first()
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
