@@ -19,7 +19,7 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() {
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 

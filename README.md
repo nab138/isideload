@@ -12,10 +12,17 @@ Things left todo before the rewrite is considered finished
 
 - Proper entitlement handling
   - actually parse macho files and stuff, right now it just uses the bare minimum and applies extra entitlements for livecontainer
-- Remove dependency on ring and reduce duplicate dependencies
+- Reduce duplicate dependencies
   - partially just need to wait for the rust crypto ecosystem to get through another release cycle
-- More parallelism/caching for better performance
+- More parallelism and caching for better performance
 
 ## Licensing
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Credits
+
+- The [idevice](https://github.com/jkcoxson/idevice) crate is used to communicate with the device
+- A [modified version of apple-platform-rs](https://github.com/nab138/isideload-apple-platform-rs) was used for codesigning
+- [Sideloader](https://github.com/Dadoum/Sideloader) was used as a reference for how some of the private API endpoints work
+- [Impactor](https://github.com/khcrysalis/Impactor) was used as a reference for some cryptography code
