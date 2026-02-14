@@ -15,8 +15,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "ubuntu-22.04"
+          - platform: "ubuntu-latest"
+            artifact_name: "minimal"
+            asset_name: "minimal-linux"
           - platform: "windows-latest"
+            artifact_name: "minimal.exe"
+            asset_name: "minimal-windows.exe"
+          - platform: "macos-latest"
+            artifact_name: "minimal"
+            asset_name: "minimal-macos"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -29,16 +36,24 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-tauri-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-
+            ${{ runner.os }}-
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add MSVC to PATH
-        if: matrix.platform == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
 
       - name: Build
-        run: cargo build --features "vendored-openssl"
+        run: cargo build -p minimal
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/debug/${{ matrix.artifact_name }}

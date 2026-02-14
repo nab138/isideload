@@ -1,129 +1,59 @@
-pub mod application;
-pub mod bundle;
-pub mod certificate;
-pub mod developer_session;
-pub mod device;
-pub mod sideload;
-
-use std::io::Error as IOError;
-
-pub use icloud_auth::{AnisetteConfiguration, AppleAccount};
-
-use developer_session::DeveloperTeam;
 use idevice::IdeviceError;
-use thiserror::Error as ThisError;
-use zsign_rust::ZSignError;
+use rootcause::{
+    hooks::{Hooks, context_formatter::ContextFormatterHook},
+    prelude::*,
+};
 
-#[derive(Debug, ThisError)]
-pub enum Error {
-    #[error("Authentication error {0}: {1}")]
-    Auth(i64, String),
-    #[error("Developer session error {0}: {1}")]
-    DeveloperSession(i64, String),
-    #[error("Error: {0}")]
-    Generic(String),
-    #[error("Failed to parse: {0}")]
-    Parse(String),
+pub mod anisette;
+pub mod auth;
+pub mod dev;
+pub mod sideload;
+pub mod util;
+
+#[derive(Debug, thiserror::Error)]
+pub enum SideloadError {
+    #[error("Auth error {0}: {1}")]
+    AuthWithMessage(i64, String),
+
+    #[error("Plist parse error: {0}")]
+    PlistParseError(String),
+
+    #[error("Failed to get anisette data, anisette not provisioned")]
+    AnisetteNotProvisioned,
+
+    #[error("Developer error {0}: {1}")]
+    DeveloperError(i64, String),
+
     #[error("Invalid bundle: {0}")]
     InvalidBundle(String),
-    #[error("Certificate error: {0}")]
-    Certificate(String),
-    #[error(transparent)]
-    Filesystem(#[from] IOError),
+
     #[error(transparent)]
     IdeviceError(#[from] IdeviceError),
-    #[error(transparent)]
-    ZSignError(#[from] ZSignError),
-    #[error(transparent)]
-    ICloudError(#[from] icloud_auth::Error),
 }
 
-pub trait SideloadLogger: Send + Sync {
-    fn log(&self, message: &str);
-    fn error(&self, error: &Error);
-}
+// The default reqwest error formatter sucks and provides no info
+struct ReqwestErrorFormatter;
 
-pub struct DefaultLogger;
-
-impl SideloadLogger for DefaultLogger {
-    fn log(&self, message: &str) {
-        println!("{message}");
-    }
-
-    fn error(&self, error: &Error) {
-        eprintln!("Error: {}", error);
-    }
-}
-
-/// Sideload configuration options.
-pub struct SideloadConfiguration<'a> {
-    /// An arbitrary machine name to appear on the certificate (e.x. "YCode")
-    pub machine_name: String,
-    /// Logger for reporting progress and errors
-    pub logger: &'a dyn SideloadLogger,
-    /// Directory used to store intermediate artifacts (profiles, certs, etc.). This directory will not be cleared at the end.
-    pub store_dir: std::path::PathBuf,
-    /// Whether or not to revoke the certificate immediately after installation
-    pub revoke_cert: bool,
-    /// Whether or not to add the increased memory limit entitlement to the app
-    pub add_increased_memory_limit: bool,
-}
-
-impl Default for SideloadConfiguration<'_> {
-    fn default() -> Self {
-        SideloadConfiguration::new()
-    }
-}
-
-impl<'a> SideloadConfiguration<'a> {
-    pub fn new() -> Self {
-        SideloadConfiguration {
-            machine_name: "isideload".to_string(),
-            logger: &DefaultLogger,
-            store_dir: std::env::current_dir().unwrap(),
-            revoke_cert: false,
-            add_increased_memory_limit: false,
+impl ContextFormatterHook<reqwest::Error> for ReqwestErrorFormatter {
+    fn display(
+        &self,
+        report: rootcause::ReportRef<'_, reqwest::Error, markers::Uncloneable, markers::Local>,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        writeln!(f, "{}", report.format_current_context_unhooked())?;
+        let mut source = report.current_context_error_source();
+        while let Some(s) = source {
+            writeln!(f, "Caused by: {:?}", s)?;
+            source = s.source();
         }
-    }
-
-    pub fn set_machine_name(mut self, machine_name: String) -> Self {
-        self.machine_name = machine_name;
-        self
-    }
-
-    pub fn set_logger(mut self, logger: &'a dyn SideloadLogger) -> Self {
-        self.logger = logger;
-        self
-    }
-
-    pub fn set_store_dir(mut self, store_dir: std::path::PathBuf) -> Self {
-        self.store_dir = store_dir;
-        self
-    }
-
-    pub fn set_revoke_cert(mut self, revoke_cert: bool) -> Self {
-        self.revoke_cert = revoke_cert;
-        self
-    }
-
-    pub fn set_add_increased_memory_limit(mut self, add: bool) -> Self {
-        self.add_increased_memory_limit = add;
-        self
+        Ok(())
     }
 }
 
-#[cfg(feature = "obfuscate")]
-#[macro_export]
-macro_rules! obf {
-    ($lit:literal) => {
-        &obfstr::obfstring!($lit)
-    };
-}
-
-#[cfg(not(feature = "obfuscate"))]
-#[macro_export]
-macro_rules! obf {
-    ($lit:literal) => {
-        &$lit.to_string()
-    };
+pub fn init() -> Result<(), Report> {
+    Hooks::new()
+        .context_formatter::<reqwest::Error, _>(ReqwestErrorFormatter)
+        .install()
+        .context("Failed to install error reporting hooks")?;
+    Ok(())
 }

@@ -1,24 +1,56 @@
-use std::{env, path::PathBuf, sync::Arc};
+use std::{env, path::PathBuf};
 
 use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
-    AnisetteConfiguration, AppleAccount, SideloadConfiguration,
-    developer_session::DeveloperSession, sideload::sideload_app,
+    anisette::remote_v3::RemoteV3AnisetteProvider,
+    auth::apple_account::AppleAccount,
+    dev::{
+        certificates::DevelopmentCertificate, developer_session::DeveloperSession,
+        teams::DeveloperTeam,
+    },
+    sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
 };
+
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
+    isideload::init().expect("Failed to initialize error reporting");
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::INFO)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
     let args: Vec<String> = env::args().collect();
+
+    let apple_id = args
+        .get(1)
+        .expect("Please provide the Apple ID to use for installation");
+    let apple_password = args.get(2).expect("Please provide the Apple ID password");
     let app_path = PathBuf::from(
-        args.get(1)
+        args.get(3)
             .expect("Please provide the path to the app to install"),
     );
-    let apple_id = args
-        .get(2)
-        .expect("Please provide the Apple ID to use for installation");
-    let apple_password = args.get(3).expect("Please provide the Apple ID password");
 
-    // You don't have to use usbmuxd, you can use any IdeviceProvider
+    let get_2fa_code = || {
+        let mut code = String::new();
+        println!("Enter 2FA code:");
+        std::io::stdin().read_line(&mut code).unwrap();
+        Some(code.trim().to_string())
+    };
+
+    let account = AppleAccount::builder(apple_id)
+        .anisette_provider(RemoteV3AnisetteProvider::default().set_serial_number("2".to_string()))
+        .login(apple_password, get_2fa_code)
+        .await;
+
+    let mut account = account.unwrap();
+
+    let dev_session = DeveloperSession::from_account(&mut account)
+        .await
+        .expect("Failed to create developer session");
+
     let usbmuxd = UsbmuxdConnection::default().await;
     if usbmuxd.is_err() {
         panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
@@ -31,36 +63,68 @@ async fn main() {
     }
 
     let provider = devs
-        .iter()
-        .next()
+        .first()
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
-    // Change the anisette url and such here
-    // Note that right now only remote anisette servers are supported
-    let anisette_config = AnisetteConfiguration::default();
-
-    let get_2fa_code = || {
-        let mut code = String::new();
-        println!("Enter 2FA code:");
-        std::io::stdin().read_line(&mut code).unwrap();
-        Ok(code.trim().to_string())
+    let team_selection_prompt = |teams: &Vec<DeveloperTeam>| {
+        println!("Please select a team:");
+        for (index, team) in teams.iter().enumerate() {
+            println!(
+                "{}: {} ({})",
+                index + 1,
+                team.name.as_deref().unwrap_or("<Unnamed>"),
+                team.team_id
+            );
+        }
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let selection = input.trim().parse::<usize>().ok()?;
+        if selection == 0 || selection > teams.len() {
+            return None;
+        }
+        Some(teams[selection - 1].team_id.clone())
     };
 
-    let account = AppleAccount::login(
-        || Ok((apple_id.to_string(), apple_password.to_string())),
-        get_2fa_code,
-        anisette_config,
-    )
-    .await
-    .unwrap();
+    let cert_selection_prompt = |certs: &Vec<DevelopmentCertificate>| {
+        println!("Maximum number of certificates reached. Please select certificates to revoke:");
+        for (index, cert) in certs.iter().enumerate() {
+            println!(
+                "({}) {}: {}",
+                index + 1,
+                cert.name.as_deref().unwrap_or("<Unnamed>"),
+                cert.machine_name.as_deref().unwrap_or("<No Machine Name>"),
+            );
+        }
+        println!("Enter the numbers of the certificates to revoke, separated by commas:");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let selections: Vec<usize> = input
+            .trim()
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .filter(|&n| n > 0 && n <= certs.len())
+            .collect();
+        if selections.is_empty() {
+            return None;
+        }
+        Some(
+            selections
+                .into_iter()
+                .map(|n| certs[n - 1].clone())
+                .collect::<Vec<_>>(),
+        )
+    };
 
-    let dev_session = DeveloperSession::new(Arc::new(account));
+    let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
+        .team_selection(TeamSelection::Prompt(team_selection_prompt))
+        .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
+        .machine_name("isideload-minimal".to_string())
+        .build();
 
-    // You can change the machine name, store directory (for certs, anisette data, & provision files), and logger
-    let config = SideloadConfiguration::default().set_machine_name("isideload-demo".to_string());
-
-    sideload_app(&provider, &dev_session, app_path, config)
-        .await
-        .unwrap()
+    let result = sideloader.install_app(&provider, app_path, true).await;
+    match result {
+        Ok(_) => println!("App installed successfully"),
+        Err(e) => panic!("Failed to install app: {:?}", e),
+    }
 }
