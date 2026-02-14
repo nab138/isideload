@@ -46,11 +46,6 @@ async fn main() {
         .login(apple_password, get_2fa_code)
         .await;
 
-    // match &account {
-    //     Ok(a) => println!("Logged in. {}", a),
-    //     Err(e) => panic!("Failed to log in to Apple ID: {:?}", e),
-    // }
-
     let mut account = account.unwrap();
 
     let dev_session = DeveloperSession::from_account(&mut account)
@@ -68,7 +63,8 @@ async fn main() {
         panic!("No devices found");
     }
 
-    let provider = devs.first()
+    let provider = devs
+        .first()
         .unwrap()
         .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 

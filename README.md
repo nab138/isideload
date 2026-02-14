@@ -6,6 +6,12 @@ A Rust library for sideloading iOS applications using an Apple ID. Used in [Cros
 
 This branch is home to isideload-next, the next major version of isideload. It features a redesigned API, improved error handling, better entitlement handling, and more. It is not ready!
 
+## Usage
+
+**You must call `isideload::init()` at the start of your program to ensure that errors are properly reported.** If you don't, errors related to network requests will not show any details.
+
+A full usage example is available is in [examples/minimal](examples/minimal/).
+
 ## TODO
 
 Things left todo before the rewrite is considered finished
