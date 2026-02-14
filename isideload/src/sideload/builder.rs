@@ -79,9 +79,11 @@ pub struct SideloaderBuilder {
     //extensions_behavior: Option<ExtensionsBehavior>,
     storage: Option<Box<dyn SideloadingStorage>>,
     machine_name: Option<String>,
+    delete_app_after_install: bool,
 }
 
 impl SideloaderBuilder {
+    /// Create a new `SideloaderBuilder` with the provided Apple developer session and Apple ID email.
     pub fn new(developer_session: DeveloperSession, apple_email: String) -> Self {
         SideloaderBuilder {
             team_selection: None,
@@ -90,6 +92,7 @@ impl SideloaderBuilder {
             machine_name: None,
             apple_email,
             max_certs_behavior: None,
+            delete_app_after_install: true,
             // extensions_behavior: None,
         }
     }
@@ -128,6 +131,12 @@ impl SideloaderBuilder {
         self
     }
 
+    /// Set whether to delete the signed app from the temporary storage after installation. Defaults to `true`.
+    pub fn delete_app_after_install(mut self, delete: bool) -> Self {
+        self.delete_app_after_install = delete;
+        self
+    }
+
     // pub fn extensions_behavior(mut self, behavior: ExtensionsBehavior) -> Self {
     //     self.extensions_behavior = Some(behavior);
     //     self
@@ -145,6 +154,7 @@ impl SideloaderBuilder {
                 .unwrap_or_else(|| Box::new(crate::util::storage::new_storage())),
             // self.extensions_behavior
             //     .unwrap_or(ExtensionsBehavior::RegisterAll),
+            self.delete_app_after_install,
         )
     }
 }

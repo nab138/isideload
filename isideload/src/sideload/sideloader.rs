@@ -30,6 +30,7 @@ pub struct Sideloader {
     apple_email: String,
     max_certs_behavior: MaxCertsBehavior,
     //extensions_behavior: ExtensionsBehavior,
+    delete_app_after_install: bool,
 }
 
 impl Sideloader {
@@ -44,6 +45,7 @@ impl Sideloader {
         machine_name: String,
         storage: Box<dyn SideloadingStorage>,
         //extensions_behavior: ExtensionsBehavior,
+        delete_app_after_install: bool,
     ) -> Self {
         Sideloader {
             team_selection,
@@ -53,10 +55,11 @@ impl Sideloader {
             apple_email,
             max_certs_behavior,
             //extensions_behavior,
+            delete_app_after_install,
         }
     }
 
-    /// Sign and install an app
+    /// Sign the app at the provided path and return the path to the signed app bundle (in a temp dir). To sign and install, see [`Self::install_app`].
     pub async fn sign_app(
         &mut self,
         app_path: PathBuf,
@@ -178,10 +181,12 @@ impl Sideloader {
     }
 
     #[cfg(feature = "install")]
+    /// Sign and install an app to a device.
     pub async fn install_app(
         &mut self,
         device_provider: &impl IdeviceProvider,
         app_path: PathBuf,
+        // this is gross but will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
     ) -> Result<Option<SpecialApp>, Report> {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
@@ -203,8 +208,15 @@ impl Sideloader {
         .await
         .context("Failed to install app on device")?;
 
+        if self.delete_app_after_install {
+            if let Err(e) = tokio::fs::remove_dir_all(signed_app_path).await {
+                tracing::warn!("Failed to remove temporary signed app file: {}", e);
+            };
+        }
+
         Ok(special_app)
     }
+
     /// Get the developer team according to the configured team selection behavior
     pub async fn get_team(&mut self) -> Result<DeveloperTeam, Report> {
         let teams = self.dev_session.list_teams().await?;

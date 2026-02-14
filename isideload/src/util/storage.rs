@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Mutex};
 use base64::prelude::*;
 use rootcause::prelude::*;
 
+/// A trait for storing and retrieving sideloading related data, such as anisette state and certificates.
 pub trait SideloadingStorage: Send + Sync {
     fn store(&self, key: &str, value: &str) -> Result<(), Report>;
     fn retrieve(&self, key: &str) -> Result<Option<String>, Report>;
@@ -24,6 +25,7 @@ pub trait SideloadingStorage: Send + Sync {
     }
 }
 
+/// Factory function to create a new storage instance based on enabled features. The priority is `keyring-storage`, then `fs-storage`, and finally an in-memory storage if neither of those features are enabled.
 pub fn new_storage() -> impl SideloadingStorage {
     #[cfg(feature = "keyring-storage")]
     {
