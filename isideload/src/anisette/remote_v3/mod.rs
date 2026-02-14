@@ -1,7 +1,5 @@
 mod state;
 
-use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -11,13 +9,14 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use serde::Deserialize;
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::SideloadError;
 use crate::anisette::remote_v3::state::AnisetteState;
 use crate::anisette::{AnisetteClientInfo, AnisetteData, AnisetteProvider};
 use crate::auth::grandslam::GrandSlam;
 use crate::util::plist::PlistDataExtract;
+use crate::util::storage::{SideloadingStorage, new_storage};
 use futures_util::{SinkExt, StreamExt};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
@@ -25,7 +24,7 @@ pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
     url: String,
-    config_path: PathBuf,
+    storage: Box<dyn SideloadingStorage>,
     serial_number: String,
     client_info: Option<AnisetteClientInfo>,
     client: reqwest::Client,
@@ -36,14 +35,14 @@ impl RemoteV3AnisetteProvider {
     ///
     /// # Arguments
     /// - `url`: The URL of the remote anisette service
-    /// - `config_path`: The path to the config file
+    /// - `storage`: The storage backend for anisette data
     /// - `serial_number`: The serial number of the device
     ///
-    pub fn new(url: &str, config_path: PathBuf, serial_number: String) -> Self {
+    pub fn new(url: &str, storage: Box<dyn SideloadingStorage>, serial_number: String) -> Self {
         Self {
             state: None,
             url: url.to_string(),
-            config_path,
+            storage,
             serial_number,
             client_info: None,
             client: reqwest::ClientBuilder::new()
@@ -58,8 +57,8 @@ impl RemoteV3AnisetteProvider {
         self
     }
 
-    pub fn set_config_path(mut self, config_path: PathBuf) -> RemoteV3AnisetteProvider {
-        self.config_path = config_path;
+    pub fn set_storage(mut self, storage: Box<dyn SideloadingStorage>) -> RemoteV3AnisetteProvider {
+        self.storage = storage;
         self
     }
 
@@ -71,7 +70,11 @@ impl RemoteV3AnisetteProvider {
 
 impl Default for RemoteV3AnisetteProvider {
     fn default() -> Self {
-        Self::new(DEFAULT_ANISETTE_V3_URL, PathBuf::new(), "0".to_string())
+        Self::new(
+            DEFAULT_ANISETTE_V3_URL,
+            Box::new(new_storage()),
+            "0".to_string(),
+        )
     }
 }
 
@@ -166,12 +169,15 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 
 impl RemoteV3AnisetteProvider {
     async fn get_state(&mut self, gs: Arc<GrandSlam>) -> Result<&mut AnisetteState, Report> {
-        let state_path = self.config_path.join("state.plist");
-        fs::create_dir_all(&self.config_path)?;
         if self.state.is_none() {
-            if let Ok(state) = plist::from_file(&state_path) {
-                info!("Loaded existing anisette state from {:?}", state_path);
-                self.state = Some(state);
+            if let Ok(Some(state)) = &self.storage.retrieve_data("anisette_state") {
+                if let Ok(state) = plist::from_bytes(state) {
+                    info!("Loaded existing anisette state");
+                    self.state = Some(state);
+                } else {
+                    warn!("Failed to parse existing anisette state, starting fresh");
+                    self.state = Some(AnisetteState::new());
+                }
             } else {
                 info!("No existing anisette state found");
                 self.state = Some(AnisetteState::new());
@@ -185,7 +191,11 @@ impl RemoteV3AnisetteProvider {
                 .await
                 .context("Failed to provision")?;
         }
-        plist::to_file_xml(&state_path, &state)?;
+        let buf = Vec::new();
+        let mut writer = std::io::BufWriter::new(buf);
+        plist::to_writer_xml(&mut writer, &state).unwrap();
+        self.storage
+            .store_data("anisette_state", &writer.into_inner()?)?;
 
         Ok(state)
     }

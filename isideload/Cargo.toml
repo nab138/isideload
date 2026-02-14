@@ -14,6 +14,7 @@ readme = "../README.md"
 default = ["install", "keyring-storage"]
 install = ["dep:idevice"]
 keyring-storage = ["keyring"]
+fs-storage = []
 
 # Unfortunately, dependencies are kinda a mess rn, since this requires a beta version of the srp crate.
 # Once that becomes stable, hopefuly duplicate dependencies should clean up.\

@@ -27,11 +27,18 @@ pub trait SideloadingStorage: Send + Sync {
 pub fn new_storage() -> impl SideloadingStorage {
     #[cfg(feature = "keyring-storage")]
     {
-        crate::util::keyring_storage::KeyringStorage::default()
+        return crate::util::keyring_storage::KeyringStorage::default();
     }
-    #[cfg(not(feature = "keyring-storage"))]
+    #[cfg(feature = "fs-storage")]
     {
-        InMemoryStorage::new()
+        return crate::util::fs_storage::FsStorage::default();
+    }
+    #[cfg(not(any(feature = "keyring-storage", feature = "fs-storage")))]
+    {
+        tracing::warn!(
+            "Keyring storage not enabled, falling back to in-memory storage. This means that the anisette state and certificates will not be saved across runs. Enable the 'keyring-storage' or 'fs-storage' feature for persistance."
+        );
+        return InMemoryStorage::new();
     }
 }
 

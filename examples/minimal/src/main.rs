@@ -9,7 +9,6 @@ use isideload::{
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::keyring_storage::KeyringStorage,
 };
 
 use tracing::Level;
@@ -120,9 +119,6 @@ async fn main() {
     let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::Prompt(team_selection_prompt))
         .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
-        .storage(Box::new(KeyringStorage::new(
-            "isideload-minimal".to_string(),
-        )))
         .machine_name("isideload-minimal".to_string())
         .build();
 
