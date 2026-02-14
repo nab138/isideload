@@ -457,9 +457,12 @@ impl AppleAccount {
 
         debug!("Sending proof login request");
 
+        let mut close_headers = HeaderMap::new();
+        close_headers.insert("Connection", HeaderValue::from_static("close"));
+
         let response2 = self
             .grandslam_client
-            .plist_request(&gs_service_url, &req2, None)
+            .plist_request(&gs_service_url, &req2, Some(close_headers))
             .await
             .context("Failed to send proof login request")?
             .check_grandslam_error()

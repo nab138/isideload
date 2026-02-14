@@ -43,18 +43,4 @@ impl SideloadingStorage for KeyringStorage {
             Err(e) => Err(e.into()),
         }
     }
-
-    fn store_data(&self, key: &str, value: &[u8]) -> Result<(), Report> {
-        Entry::new(&self.service_name, key)?.set_secret(value)?;
-        Ok(())
-    }
-
-    fn retrieve_data(&self, key: &str) -> Result<Option<Vec<u8>>, Report> {
-        let entry = Entry::new(&self.service_name, key)?;
-        match entry.get_secret() {
-            Ok(secret) => Ok(Some(secret)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
 }
