@@ -78,7 +78,8 @@ impl Sideloader {
             self.storage.as_ref(),
             &self.max_certs_behavior,
         )
-        .await?;
+        .await
+        .context("Failed to retrieve certificate identity")?;
 
         let mut app = Application::new(app_path)?;
         let special = app.get_special_app();

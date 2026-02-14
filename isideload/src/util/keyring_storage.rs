@@ -43,4 +43,22 @@ impl SideloadingStorage for KeyringStorage {
             Err(e) => Err(e.into()),
         }
     }
+
+    // Linux doesn't seem to properly retrive binary secrets, so we don't use this implementation and instead let it fall back to base64 encoding.
+    // Windows fails to store the base64 encoded data because it is too long.
+    #[cfg(target_os = "windows")]
+    fn store_data(&self, key: &str, value: &[u8]) -> Result<(), Report> {
+        Entry::new(&self.service_name, key)?.set_secret(value)?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn retrieve_data(&self, key: &str) -> Result<Option<Vec<u8>>, Report> {
+        let entry = Entry::new(&self.service_name, key)?;
+        match entry.get_secret() {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
