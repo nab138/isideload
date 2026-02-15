@@ -8,6 +8,7 @@ use plist_macro::plist;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use serde::Deserialize;
+use tokio::time::{Duration, timeout};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info, warn};
 
@@ -238,7 +239,13 @@ impl RemoteV3AnisetteProvider {
             .replace("http://", "ws://");
 
         debug!("Starting provisioning at {}", websocket_url);
-        let (mut ws_stream, _) = tokio_tungstenite::connect_async(&websocket_url).await?;
+        let (mut ws_stream, _) = timeout(
+            Duration::from_secs(10),
+            tokio_tungstenite::connect_async(&websocket_url),
+        )
+        .await
+        .context("Failed to connect to provisioning socket")?
+        .context("Failed to connect to provisioning socket")?;
 
         debug!("Connected to provisioning socket");
 
