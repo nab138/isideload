@@ -13,18 +13,22 @@ use crate::{
 ///
 /// If there is only one team, it will be selected automatically regardless of this setting.
 /// If there are multiple teams, the behavior will depend on this setting.
+#[derive(Clone)]
 pub enum TeamSelection {
     /// Select the first team automatically
     First,
-    /// Prompt the user to select a team
-    Prompt(fn(&Vec<DeveloperTeam>) -> Option<String>),
+    /// Prompt the user to select a team the first time this sideloader is used, and remember the selection for future runs
+    PromptOnce(fn(&Vec<DeveloperTeam>) -> Option<String>),
+    /// Prompt the user to select a team every time this sideloader is used
+    PromptAlways(fn(&Vec<DeveloperTeam>) -> Option<String>),
 }
 
 impl Display for TeamSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TeamSelection::First => write!(f, "first team"),
-            TeamSelection::Prompt(_) => write!(f, "prompting for team"),
+            TeamSelection::PromptOnce(_) => write!(f, "prompting for team (once)"),
+            TeamSelection::PromptAlways(_) => write!(f, "prompting for team (always)"),
         }
     }
 }

@@ -31,6 +31,7 @@ pub struct Sideloader {
     max_certs_behavior: MaxCertsBehavior,
     //extensions_behavior: ExtensionsBehavior,
     delete_app_after_install: bool,
+    team: Option<DeveloperTeam>,
 }
 
 impl Sideloader {
@@ -56,6 +57,7 @@ impl Sideloader {
             max_certs_behavior,
             //extensions_behavior,
             delete_app_after_install,
+            team: None,
         }
     }
 
@@ -219,8 +221,11 @@ impl Sideloader {
 
     /// Get the developer team according to the configured team selection behavior
     pub async fn get_team(&mut self) -> Result<DeveloperTeam, Report> {
+        if let Some(team) = &self.team {
+            return Ok(team.clone());
+        }
         let teams = self.dev_session.list_teams().await?;
-        Ok(match teams.len() {
+        let team = match teams.len() {
             0 => {
                 bail!("No developer teams available")
             }
@@ -232,7 +237,8 @@ impl Sideloader {
                 );
                 match &self.team_selection {
                     TeamSelection::First => teams.into_iter().next().unwrap(),
-                    TeamSelection::Prompt(prompt_fn) => {
+                    TeamSelection::PromptOnce(prompt_fn)
+                    | TeamSelection::PromptAlways(prompt_fn) => {
                         let selection =
                             prompt_fn(&teams).ok_or_else(|| report!("No team selected"))?;
                         teams
@@ -242,6 +248,10 @@ impl Sideloader {
                     }
                 }
             }
-        })
+        };
+        if !matches!(&self.team_selection, TeamSelection::PromptAlways(_)) {
+            self.team = Some(team.clone());
+        }
+        Ok(team)
     }
 }
