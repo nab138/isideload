@@ -230,15 +230,17 @@ impl RemoteV3AnisetteProvider {
         gs: Arc<GrandSlam>,
         url: &str,
     ) -> Result<(), Report> {
-        debug!("Starting provisioning");
-
         let start_provisioning = gs.get_url("midStartProvisioning")?;
         let end_provisioning = gs.get_url("midFinishProvisioning")?;
 
         let websocket_url = format!("{}/v3/provisioning_session", url)
             .replace("https://", "wss://")
             .replace("http://", "ws://");
+
+        debug!("Starting provisioning at {}", websocket_url);
         let (mut ws_stream, _) = tokio_tungstenite::connect_async(&websocket_url).await?;
+
+        debug!("Connected to provisioning socket");
 
         loop {
             let Some(msg) = ws_stream.next().await else {
