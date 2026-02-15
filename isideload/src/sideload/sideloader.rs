@@ -254,4 +254,8 @@ impl Sideloader {
         }
         Ok(team)
     }
+
+    pub fn get_dev_session(&mut self) -> &mut DeveloperSession {
+        &mut self.dev_session
+    }
 }
