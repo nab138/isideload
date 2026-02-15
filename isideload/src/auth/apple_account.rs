@@ -95,7 +95,7 @@ impl AppleAccount {
         password: &str,
         two_factor_callback: impl Fn() -> Option<String>,
     ) -> Result<(), Report> {
-        info!("Logging in to Apple ID: {}", self.email);
+        info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
             warn!("Debug mode enabled: this is a security risk!");
         }
@@ -680,4 +680,25 @@ pub struct AppToken {
     pub token: String,
     pub duration: u64,
     pub expiry: u64,
+}
+
+fn censor_email(email: &str) -> String {
+    if std::env::var("DEBUG_SENSITIVE").is_ok() {
+        return email.to_string();
+    }
+    if let Some(at_pos) = email.find('@') {
+        let (local, domain) = email.split_at(at_pos);
+        if local.len() <= 2 {
+            format!("{}***{}", &local[0..1], &domain)
+        } else {
+            format!(
+                "{}***{}{}",
+                &local[0..1],
+                &local[local.len() - 1..],
+                &domain
+            )
+        }
+    } else {
+        "***".to_string()
+    }
 }
