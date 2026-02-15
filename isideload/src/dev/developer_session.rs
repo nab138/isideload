@@ -25,6 +25,7 @@ pub use super::device_type::DeveloperDeviceType;
 pub use super::devices::*;
 pub use super::teams::*;
 
+#[derive(Clone)]
 pub struct DeveloperSession {
     token: AppToken,
     adsid: String,

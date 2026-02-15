@@ -258,4 +258,8 @@ impl Sideloader {
     pub fn get_dev_session(&mut self) -> &mut DeveloperSession {
         &mut self.dev_session
     }
+
+    pub fn get_email(&self) -> &str {
+        &self.apple_email
+    }
 }

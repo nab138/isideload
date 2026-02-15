@@ -675,7 +675,7 @@ impl std::fmt::Display for AppleAccount {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AppToken {
     pub token: String,
     pub duration: u64,

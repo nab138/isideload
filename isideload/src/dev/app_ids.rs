@@ -10,9 +10,9 @@ use plist::{Data, Date, Dictionary, Value};
 use plist_macro::plist;
 use reqwest::header::HeaderValue;
 use rootcause::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppId {
     pub app_id_id: String,
@@ -22,7 +22,7 @@ pub struct AppId {
     pub expiration_date: Option<Date>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAppIdsResponse {
     pub app_ids: Vec<AppId>,
@@ -133,12 +133,12 @@ pub trait AppIdsApi {
     async fn delete_app_id(
         &mut self,
         team: &DeveloperTeam,
-        app_id: &AppId,
+        app_id_id: &str,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<(), Report> {
         let body = plist!(dict {
             "teamId": &team.team_id,
-            "appIdId": &app_id.app_id_id,
+            "appIdId": app_id_id,
         });
 
         self.developer_session()
