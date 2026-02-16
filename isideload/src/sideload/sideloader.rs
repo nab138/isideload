@@ -18,8 +18,9 @@ use crate::{
 
 use std::path::PathBuf;
 
+use apple_codesign::{AppleCertificate, cryptography::parse_pfx_data};
 use idevice::provider::IdeviceProvider;
-use rootcause::prelude::*;
+use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
 pub struct Sideloader {
@@ -168,12 +169,15 @@ impl Sideloader {
         )
         .await?;
 
+        let settings =
+            sign::signing_settings(&cert_identity).context("Failed to create signing settings")?;
+
         sign::sign(
+            settings,
             &mut app,
-            &cert_identity,
-            &provisioning_profile,
+            provisioning_profile.encoded_profile.as_ref(),
             &special,
-            &team,
+            &team.team_id,
         )
         .context("Failed to sign app")?;
 
@@ -253,6 +257,37 @@ impl Sideloader {
             self.team = Some(team.clone());
         }
         Ok(team)
+    }
+
+    pub async fn sign_cert(
+        app_path: PathBuf,
+        p12: Vec<u8>,
+        password: &str,
+        provisioning_profile: Vec<u8>,
+    ) -> Result<(PathBuf, Option<SpecialApp>), Report> {
+        let (cert, key) = parse_pfx_data(&p12, password).context("Failed to parse p12")?;
+        let team_id = cert
+            .apple_team_id()
+            .ok_or_report()
+            .context("Certificate is missing Apple team ID")?;
+        let settings = sign::imported_cert_signing_settings(&key, cert)
+            .context("Failed to create signing settings")?;
+
+        let mut app = Application::new(app_path)?;
+        let special = app.get_special_app();
+
+        //app.update_bundle_id(&main_bundle_id, &main_app_id_str)?;
+
+        sign::sign(
+            settings,
+            &mut app,
+            &provisioning_profile,
+            &special,
+            &team_id,
+        )
+        .context("Failed to sign app")?;
+
+        Ok((app.bundle.bundle_dir, special))
     }
 
     pub fn get_dev_session(&mut self) -> &mut DeveloperSession {

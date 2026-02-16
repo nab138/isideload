@@ -3,9 +3,9 @@ use plist::Dictionary;
 use plist_macro::plist_to_xml_string;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
+use x509_certificate::{CapturedX509Certificate, KeyInfoSigner};
 
 use crate::{
-    dev::{app_ids::Profile, teams::DeveloperTeam},
     sideload::{
         application::{Application, SpecialApp},
         cert_identity::CertificateIdentity,
@@ -14,18 +14,13 @@ use crate::{
 };
 
 pub fn sign(
+    mut settings: SigningSettings,
     app: &mut Application,
-    cert_identity: &CertificateIdentity,
-    provisioning_profile: &Profile,
+    provisioning_profile: &[u8],
     special: &Option<SpecialApp>,
-    team: &DeveloperTeam,
+    team_id: &str,
 ) -> Result<(), Report> {
-    let mut settings = signing_settings(cert_identity)?;
-    let entitlements: Dictionary = entitlements_from_prov(
-        provisioning_profile.encoded_profile.as_ref(),
-        special,
-        team,
-    )?;
+    let entitlements: Dictionary = entitlements_from_prov(provisioning_profile, special, team_id)?;
 
     settings
         .set_entitlements_xml(
@@ -65,10 +60,25 @@ pub fn signing_settings<'a>(cert: &'a CertificateIdentity) -> Result<SigningSett
     Ok(settings)
 }
 
+pub fn imported_cert_signing_settings<'a, T: KeyInfoSigner>(
+    key: &'a T,
+    cert: CapturedX509Certificate,
+) -> Result<SigningSettings<'a>, Report> {
+    let mut settings = SigningSettings::default();
+
+    settings.set_signing_key(key, cert);
+
+    settings.set_for_notarization(false);
+    settings.set_shallow(true);
+    settings.chain_apple_certificates();
+    settings.set_team_id_from_signing_certificate();
+    Ok(settings)
+}
+
 fn entitlements_from_prov(
     data: &[u8],
     special: &Option<SpecialApp>,
-    team: &DeveloperTeam,
+    team_id: &str,
 ) -> Result<Dictionary, Report> {
     let start = data
         .windows(6)
@@ -94,13 +104,13 @@ fn entitlements_from_prov(
     ) {
         let mut keychain_access = vec![plist::Value::String(format!(
             "{}.com.kdt.livecontainer.shared",
-            team.team_id
+            team_id
         ))];
 
         for number in 1..128 {
             keychain_access.push(plist::Value::String(format!(
                 "{}.com.kdt.livecontainer.shared.{}",
-                team.team_id, number
+                team_id, number
             )));
         }
 
