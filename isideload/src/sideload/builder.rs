@@ -40,7 +40,7 @@ pub enum MaxCertsBehavior {
     /// If the maximum number of certificates is reached, return an error instead of creating a new certificate
     Error,
     /// If the maximum number of certificates is reached, prompt the user to select which certificates to revoke until it is possible to create a new certificate
-    Prompt(fn(&Vec<DevelopmentCertificate>) -> Option<Vec<DevelopmentCertificate>>),
+    Prompt(Box<dyn Fn(&Vec<DevelopmentCertificate>) -> Option<Vec<String>> + Send + Sync>),
 }
 
 /// The actual behavior choices for extensions (non-prompt variants)

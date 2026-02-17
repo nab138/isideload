@@ -9,6 +9,7 @@ use isideload::{
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
+    util::keyring_storage::KeyringStorage,
 };
 
 use tracing::Level;
@@ -111,20 +112,21 @@ async fn main() {
         Some(
             selections
                 .into_iter()
-                .map(|n| certs[n - 1].clone())
+                .map(|n| certs[n - 1].serial_number.clone().unwrap_or_default())
                 .collect::<Vec<_>>(),
         )
     };
 
     let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
-        .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
+        .max_certs_behavior(MaxCertsBehavior::Prompt(Box::new(cert_selection_prompt)))
+        .storage(Box::new(KeyringStorage::new("minimal".to_string())))
         .machine_name("isideload-minimal".to_string())
         .build();
 
     let result = sideloader.install_app(&provider, app_path, true).await;
     match result {
         Ok(_) => println!("App installed successfully"),
-        Err(e) => panic!("Failed to install app: {:?}", e),
+        Err(e) => panic!("{}", e),
     }
 }

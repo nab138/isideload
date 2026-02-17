@@ -27,7 +27,7 @@ pub enum SideloadError {
     #[error("Invalid bundle: {0}")]
     InvalidBundle(String),
 
-    #[error(transparent)]
+    #[error("{0}")]
     IdeviceError(#[from] IdeviceError),
 }
 

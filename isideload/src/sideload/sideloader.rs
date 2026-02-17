@@ -210,10 +210,10 @@ impl Sideloader {
         .await
         .context("Failed to install app on device")?;
 
-        if self.delete_app_after_install {
-            if let Err(e) = tokio::fs::remove_dir_all(signed_app_path).await {
-                tracing::warn!("Failed to remove temporary signed app file: {}", e);
-            };
+        if self.delete_app_after_install
+            && let Err(e) = tokio::fs::remove_dir_all(signed_app_path).await
+        {
+            tracing::warn!("Failed to remove temporary signed app file: {}", e);
         }
 
         Ok(special_app)

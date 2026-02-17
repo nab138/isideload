@@ -307,17 +307,12 @@ impl CertificateIdentity {
                     error!("User did not select any certificates to revoke");
                     return Err(error.into());
                 }
-                for cert in certs_to_revoke.unwrap() {
-                    info!(
-                        "Revoking certificate with name: {}",
-                        cert.machine_name
-                            .unwrap_or(cert.machine_id.unwrap_or_default())
-                    );
-                    let serial_number = cert.serial_number.clone();
+                for serial in certs_to_revoke.unwrap() {
+                    info!("Revoking certificate with serial number: {}", serial);
                     developer_session
-                        .revoke_development_cert(team, &cert.serial_number.unwrap(), None)
+                        .revoke_development_cert(team, &serial, None)
                         .await?;
-                    existing_certs.retain(|c| c.serial_number != serial_number);
+                    existing_certs.retain(|c| c.serial_number != Some(serial.clone()));
                 }
                 Ok(())
             }
