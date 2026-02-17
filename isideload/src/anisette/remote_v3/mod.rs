@@ -38,7 +38,6 @@ impl RemoteV3AnisetteProvider {
     /// - `url`: The URL of the remote anisette service
     /// - `storage`: The storage backend for anisette data
     /// - `serial_number`: The serial number of the device
-    ///
     pub fn new(url: &str, storage: Box<dyn SideloadingStorage>, serial_number: String) -> Self {
         Self {
             state: None,
@@ -46,10 +45,7 @@ impl RemoteV3AnisetteProvider {
             storage,
             serial_number,
             client_info: None,
-            client: reqwest::ClientBuilder::new()
-                .danger_accept_invalid_certs(true)
-                .build()
-                .unwrap(),
+            client: reqwest::ClientBuilder::new().build().unwrap(),
         }
     }
 
