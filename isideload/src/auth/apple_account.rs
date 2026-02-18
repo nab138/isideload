@@ -6,7 +6,7 @@ use crate::{
         builder::AppleAccountBuilder,
         grandslam::{GrandSlam, GrandSlamErrorChecker},
     },
-    util::plist::PlistDataExtract,
+    util::plist::{PlistDataExtract, SensitivePlistAttachment},
 };
 use aes::{
     Aes256,
@@ -440,7 +440,7 @@ impl AppleAccount {
 
         let verifier = srp_client
             .process_reply(&a, self.email.as_bytes(), &password_buf, salt, b_pub)
-            .unwrap();
+            .context("Failed to compute SRP proof")?;
 
         let req2 = plist!(dict {
             "Header": {
@@ -534,7 +534,8 @@ impl AppleAccount {
         let c = spd.get_data("c").context("Failed to get app token")?;
 
         let checksum = Hmac::<Sha256>::new_from_slice(session_key)
-            .unwrap()
+            .context("Failed to create HMAC for app token checksum")
+            .attach_with(|| SensitivePlistAttachment::new(spd.clone()))?
             .chain_update("apptokens".as_bytes())
             .chain_update(dsid.as_bytes())
             .chain_update(app.as_bytes())
@@ -603,6 +604,8 @@ impl AppleAccount {
                 .get_signed_integer("expiry")
                 .context("Failed to get app token expiry")? as u64,
         };
+
+        info!("Successfully retrieved app token for {}", app);
 
         Ok(app_token)
     }
