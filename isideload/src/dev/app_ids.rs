@@ -27,7 +27,7 @@ pub struct AppId {
 pub struct ListAppIdsResponse {
     pub app_ids: Vec<AppId>,
     pub max_quantity: Option<u64>,
-    pub available_quantity: Option<u64>,
+    pub available_quantity: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
