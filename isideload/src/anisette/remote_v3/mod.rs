@@ -236,10 +236,15 @@ impl RemoteV3AnisetteProvider {
 
         debug!("Starting provisioning at {}", websocket_url);
         let (mut ws_stream, _) = timeout(
-            Duration::from_secs(10),
+            Duration::from_secs(15),
             tokio_tungstenite::connect_async(&websocket_url),
         )
         .await
+        .map_err(|_| {
+            report!(
+                "Timed out provisioning anisette. Choose a different anisette server and try again."
+            )
+        })
         .context("Failed to connect to provisioning socket")?
         .context("Failed to connect to provisioning socket")?;
 
