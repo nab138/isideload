@@ -573,8 +573,10 @@ impl AppleAccount {
             .get_data("et")
             .context("Failed to get encrypted token")?;
 
+        debug!("Acquired encrypted token for {}", app);
         let decrypted_token = Self::decrypt_gcm(encrypted_token, session_key)
             .context("Failed to decrypt app token")?;
+        debug!("Decrypted app token for {}", app);
 
         let token: Dictionary = plist::from_bytes(&decrypted_token)
             .context("Failed to parse decrypted app token plist")?;
@@ -653,15 +655,24 @@ impl AppleAccount {
             bail!("IV is not the correct length: {} bytes", iv.len());
         }
 
+        debug!(
+            "Decrypting GCM data with key of length {} and IV of length {}",
+            key.len(),
+            iv.len()
+        );
         let key = aes_gcm::Key::<AesGcm<Aes256, U16>>::try_from(key)?;
+        debug!("GCM key created successfully");
         let cipher = AesGcm::<Aes256, U16>::new(&key);
+        debug!("GCM cipher initialized successfully");
         let nonce = Nonce::<U16>::try_from(iv)?;
+        debug!("GCM nonce created successfully");
 
         let mut buf = ciphertext_and_tag.to_vec();
 
         cipher
             .decrypt_in_place(&nonce, header, &mut buf)
             .map_err(|e| report!("Failed to decrypt gcm: {}", e))?;
+        debug!("GCM decryption successful");
 
         Ok(buf)
     }
