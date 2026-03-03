@@ -85,6 +85,7 @@ impl Application {
         let special_app = match bundle_id {
             "com.rileytestut.AltStore" => Some(SpecialApp::AltStore),
             "com.SideStore.SideStore" => Some(SpecialApp::SideStore),
+            "app.stik.store" => Some(SpecialApp::StikStore),
             _ => None,
         };
         if special_app.is_some() {
@@ -225,13 +226,18 @@ impl Application {
 
         if matches!(
             special,
-            SpecialApp::SideStoreLc | SpecialApp::SideStore | SpecialApp::AltStore
+            SpecialApp::SideStoreLc
+                | SpecialApp::SideStore
+                | SpecialApp::AltStore
+                | SpecialApp::StikStore
         ) {
+            if !matches!(special, SpecialApp::StikStore) {
+                self.bundle.app_info.insert(
+                    "ALTAppGroups".to_string(),
+                    plist::Value::Array(vec![plist::Value::String(group_identifier.to_string())]),
+                );
+            }
             info!("Injecting certificate for {}", special);
-            self.bundle.app_info.insert(
-                "ALTAppGroups".to_string(),
-                plist::Value::Array(vec![plist::Value::String(group_identifier.to_string())]),
-            );
 
             let target_bundle =
                 match special {
@@ -242,8 +248,16 @@ impl Application {
                 };
 
             if let Some(target_bundle) = target_bundle {
+                let id_key = match special {
+                    SpecialApp::StikStore => "MachineID",
+                    _ => "ALTCertificateID",
+                };
+                let cert_file_name = match special {
+                    SpecialApp::StikStore => "Certificate.p12",
+                    _ => "ALTCertificate.p12",
+                };
                 target_bundle.app_info.insert(
-                    "ALTCertificateID".to_string(),
+                    id_key.to_string(),
                     plist::Value::String(cert.get_serial_number()),
                 );
 
@@ -251,14 +265,14 @@ impl Application {
                     .as_p12(&cert.machine_id)
                     .await
                     .context("Failed to encode cert as p12")?;
-                let alt_cert_path = target_bundle.bundle_dir.join("ALTCertificate.p12");
+                let alt_cert_path = target_bundle.bundle_dir.join(cert_file_name);
 
                 let mut file = tokio::fs::File::create(&alt_cert_path)
                     .await
-                    .context("Failed to create ALTCertificate.p12")?;
+                    .context(format!("Failed to create {}", cert_file_name))?;
                 file.write_all(&p12_bytes)
                     .await
-                    .context("Failed to write ALTCertificate.p12")?;
+                    .context(format!("Failed to write {}", cert_file_name))?;
             }
         }
         Ok(())
