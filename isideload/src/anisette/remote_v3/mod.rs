@@ -236,7 +236,7 @@ impl RemoteV3AnisetteProvider {
 
         debug!("Starting provisioning at {}", websocket_url);
         let (mut ws_stream, _) = timeout(
-            Duration::from_secs(15),
+            Duration::from_secs(30),
             tokio_tungstenite::connect_async(&websocket_url),
         )
         .await
