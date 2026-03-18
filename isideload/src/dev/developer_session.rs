@@ -107,7 +107,11 @@ impl DeveloperSession {
             .client
             .post(url)?
             .body(plist_to_xml_string(&body))
-            .headers(self.get_headers().await?)
+            .headers(
+                self.get_headers()
+                    .await
+                    .context("Failed to get anisette headers")?,
+            )
             .send()
             .await?
             .error_for_status()

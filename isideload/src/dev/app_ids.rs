@@ -180,7 +180,10 @@ pub trait AppIdsApi {
     ) -> Result<(), Report> {
         let dev_session = self.developer_session();
 
-        let mut headers = dev_session.get_headers().await?;
+        let mut headers = dev_session
+            .get_headers()
+            .await
+            .context("Failed to get anisette headers")?;
         headers.insert(
             "Content-Type",
             HeaderValue::from_static("application/vnd.api+json"),
