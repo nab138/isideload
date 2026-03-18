@@ -998,6 +998,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 
 [[package]]
+name = "dbus"
+version = "0.9.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21b3aa68d7e7abee336255bd7248ea965cc393f3e70411135a6f6a4b651345d4"
+dependencies = [
+ "libc",
+ "libdbus-sys",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "dbus-secret-service"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "708b509edf7889e53d7efb0ffadd994cc6c2345ccb62f55cfd6b0682165e4fa6"
+dependencies = [
+ "aes 0.8.4",
+ "block-padding 0.3.3",
+ "cbc 0.1.2",
+ "dbus",
+ "fastrand",
+ "hkdf",
+ "num",
+ "once_cell",
+ "sha2 0.10.9",
+ "zeroize",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1649,6 +1678,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "hkdf"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
+dependencies = [
+ "hmac 0.12.1",
+]
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2016,7 +2054,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isideload"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "aes 0.9.0-rc.4",
  "aes-gcm",
@@ -2292,6 +2330,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
 dependencies = [
  "byteorder",
+ "dbus-secret-service",
  "linux-keyutils",
  "log",
  "secret-service",
@@ -2342,6 +2381,15 @@ name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+
+[[package]]
+name = "libdbus-sys"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "328c4789d42200f1eeec05bd86c9c13c7f091d2ba9a6ea35acdf51f31bc0f043"
+dependencies = [
+ "pkg-config",
+]
 
 [[package]]
 name = "libm"
@@ -3731,12 +3779,16 @@ version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4d35ad99a181be0a60ffcbe85d680d98f87bdc4d7644ade319b87076b9dbfd4"
 dependencies = [
+ "aes 0.8.4",
+ "cbc 0.1.2",
  "futures-util",
  "generic-array",
+ "hkdf",
  "num",
  "once_cell",
  "rand 0.8.5",
  "serde",
+ "sha2 0.10.9",
  "zbus",
 ]
 
@@ -4267,8 +4319,10 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -5488,6 +5542,7 @@ dependencies = [
  "serde_repr",
  "sha1",
  "static_assertions",
+ "tokio",
  "tracing",
  "uds_windows",
  "windows-sys 0.52.0",
