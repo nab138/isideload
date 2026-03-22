@@ -3,7 +3,7 @@ name = "isideload"
 description = "Sideload iOS/iPadOS applications"
 license = "MIT"
 authors = ["Nicholas Sharp <nab@nabdev.me>"]
-version = "0.2.18"
+version = "0.2.19"
 edition = "2024"
 repository = "https://github.com/nab138/isideload"
 documentation = "https://docs.rs/isideload"
@@ -13,7 +13,7 @@ readme = "../README.md"
 [features]
 default = ["install", "keyring-storage"]
 install = ["dep:idevice"]
-keyring-storage = ["keyring"]
+keyring-storage = ["dep:keyring"]
 fs-storage = []
 
 # Unfortunately, dependencies are kinda a mess rn, since this requires a beta version of the srp crate.
@@ -48,9 +48,9 @@ tokio = { version = "1.49.0", features = ["fs"] }
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
 x509-certificate = { version = "0.25.0", package = "isideload-x509-certificate" }
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
-p12-keystore = "0.2.0"
+p12-keystore = "0.2.1"
 zip = { version = "8", default-features = false, features = ["deflate"] }
-apple-codesign = { version = "0.29.3", package = "isideload-apple-codesign" }
+apple-codesign = { version = "0.29.4", package = "isideload-apple-codesign" }
 
 # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.
 # It has been fixed already but I am waiting for a new release before I can update the dependency.

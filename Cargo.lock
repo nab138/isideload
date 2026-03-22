@@ -1830,7 +1830,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isideload"
-version = "0.2.18"
+version = "0.2.19"
 dependencies = [
  "aes 0.9.0-rc.4",
  "aes-gcm",
@@ -1867,9 +1867,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-codesign"
-version = "0.29.3"
+version = "0.29.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5e20e7150fdd23e20ee968fb3e9343d70f626fe33a5b42d6064e848178087d1"
+checksum = "51fa9e2b18c4408d79afc72d21b581ffe2fe95d1fb457a997dc3a091a7a3b2dd"
 dependencies = [
  "anyhow",
  "apple-bundles",
@@ -1903,6 +1903,7 @@ dependencies = [
  "oid-registry",
  "once_cell",
  "p12",
+ "p12-keystore",
  "p256",
  "pem",
  "pkcs1 0.7.5",
