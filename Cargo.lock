@@ -1720,9 +1720,9 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "idevice"
-version = "0.1.54"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9ec052630c34a8d6c015d4c64b623dad916e8f332c247147b495dac87714040"
+checksum = "926edea5c192201fb01834e47987c9ba10f26ba9ef5bf75d1ce6e4711bd6f98d"
 dependencies = [
  "async_zip",
  "base64",
@@ -1730,6 +1730,7 @@ dependencies = [
  "futures",
  "plist",
  "plist-macro",
+ "rand 0.10.0",
  "rustls",
  "serde",
  "thiserror 2.0.18",
@@ -1830,7 +1831,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isideload"
-version = "0.2.20"
+version = "0.2.21"
 dependencies = [
  "aes 0.9.0-rc.4",
  "aes-gcm",
