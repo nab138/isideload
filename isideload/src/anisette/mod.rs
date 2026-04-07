@@ -8,6 +8,7 @@ use rootcause::prelude::*;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use tokio::sync::RwLock;
+use tracing::warn;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct AnisetteClientInfo {
@@ -31,43 +32,41 @@ impl AnisetteData {
     pub fn get_headers(&self) -> HashMap<String, String> {
         //let dt: DateTime<Utc> = Utc::now().round_subsecs(0);
 
-        HashMap::from_iter(
-            [
-                // (
-                //     "X-Apple-I-Client-Time".to_string(),
-                //     dt.format("%+").to_string().replace("+00:00", "Z"),
-                // ),
-                // ("X-Apple-I-SRL-NO".to_string(), serial),
-                // ("X-Apple-I-TimeZone".to_string(), "UTC".to_string()),
-                // ("X-Apple-Locale".to_string(), "en_US".to_string()),
-                // ("X-Apple-I-MD-RINFO".to_string(), self.routing_info.clone()),
-                // ("X-Apple-I-MD-LU".to_string(), self.local_user_id.clone()),
-                (
-                    "X-Mme-Device-Id".to_string(),
-                    self.device_unique_identifier.clone(),
-                ),
-                ("X-Apple-I-MD".to_string(), self.one_time_password.clone()),
-                ("X-Apple-I-MD-M".to_string(), self.machine_id.clone()),
-                // (
-                //     "X-Mme-Client-Info".to_string(),
-                //     self.device_description.clone(),
-                // ),
-            ],
-        )
+        HashMap::from_iter([
+            // (
+            //     "X-Apple-I-Client-Time".to_string(),
+            //     dt.format("%+").to_string().replace("+00:00", "Z"),
+            // ),
+            // ("X-Apple-I-SRL-NO".to_string(), serial),
+            // ("X-Apple-I-TimeZone".to_string(), "UTC".to_string()),
+            // ("X-Apple-Locale".to_string(), "en_US".to_string()),
+            // ("X-Apple-I-MD-RINFO".to_string(), self.routing_info.clone()),
+            // ("X-Apple-I-MD-LU".to_string(), self.local_user_id.clone()),
+            (
+                "X-Mme-Device-Id".to_string(),
+                self.device_unique_identifier.clone(),
+            ),
+            ("X-Apple-I-MD".to_string(), self.one_time_password.clone()),
+            ("X-Apple-I-MD-M".to_string(), self.machine_id.clone()),
+            // (
+            //     "X-Mme-Client-Info".to_string(),
+            //     self.device_description.clone(),
+            // ),
+        ])
     }
 
-    pub fn get_header_map(&self) -> HeaderMap {
+    pub fn get_header_map(&self) -> Result<HeaderMap, Report> {
         let headers_map = self.get_headers();
         let mut header_map = HeaderMap::new();
 
         for (key, value) in headers_map {
             header_map.insert(
-                reqwest::header::HeaderName::from_bytes(key.as_bytes()).unwrap(),
-                reqwest::header::HeaderValue::from_str(&value).unwrap(),
+                reqwest::header::HeaderName::from_bytes(key.as_bytes())?,
+                reqwest::header::HeaderValue::from_str(&value)?,
             );
         }
 
-        header_map
+        Ok(header_map)
     }
 
     pub fn get_client_provided_data(&self) -> Dictionary {
@@ -90,8 +89,14 @@ impl AnisetteData {
     }
 
     pub fn needs_refresh(&self) -> bool {
-        let elapsed = self.generated_at.elapsed().unwrap();
-        elapsed.as_secs() > 60
+        let elapsed = self.generated_at.elapsed();
+        match elapsed {
+            Ok(elapsed) => elapsed.as_secs() > 60,
+            Err(_) => {
+                warn!("Unable to determine anisette data age, treating as expired");
+                true
+            }
+        }
     }
 }
 
@@ -125,9 +130,10 @@ impl AnisetteDataGenerator {
         gs: Arc<GrandSlam>,
     ) -> Result<Arc<AnisetteData>, Report> {
         if let Some(data) = &self.data
-            && !data.needs_refresh() {
-                return Ok(data.clone());
-            }
+            && !data.needs_refresh()
+        {
+            return Ok(data.clone());
+        }
 
         // trying to avoid locking as write unless necessary to promote concurrency
         let provider = self.provider.read().await;

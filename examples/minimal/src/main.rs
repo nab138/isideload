@@ -42,7 +42,11 @@ async fn main() {
     };
 
     let account = AppleAccount::builder(apple_id)
-        .anisette_provider(RemoteV3AnisetteProvider::default().set_serial_number("2".to_string()))
+        .anisette_provider(
+            RemoteV3AnisetteProvider::default()
+                .unwrap()
+                .set_serial_number("2".to_string()),
+        )
         .login(apple_password, get_2fa_code)
         .await;
 

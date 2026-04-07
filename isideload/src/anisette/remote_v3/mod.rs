@@ -6,6 +6,7 @@ use std::time::SystemTime;
 use base64::prelude::*;
 use plist_macro::plist;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
 use serde::Deserialize;
 use tokio::time::{Duration, timeout};
@@ -38,15 +39,29 @@ impl RemoteV3AnisetteProvider {
     /// - `url`: The URL of the remote anisette service
     /// - `storage`: The storage backend for anisette data
     /// - `serial_number`: The serial number of the device
-    pub fn new(url: &str, storage: Box<dyn SideloadingStorage>, serial_number: String) -> Self {
-        Self {
+    pub fn new(
+        url: &str,
+        storage: Box<dyn SideloadingStorage>,
+        serial_number: String,
+    ) -> Result<Self, Report> {
+        Ok(Self {
             state: None,
             url: url.to_string(),
             storage,
             serial_number,
             client_info: None,
-            client: reqwest::ClientBuilder::new().build().unwrap(),
-        }
+            client: reqwest::ClientBuilder::new()
+                .build()
+                .context("Failed to build HTTP client")?,
+        })
+    }
+
+    pub fn default() -> Result<Self, Report> {
+        Self::new(
+            DEFAULT_ANISETTE_V3_URL,
+            Box::new(new_storage()),
+            "0".to_string(),
+        )
     }
 
     pub fn set_url(mut self, url: &str) -> RemoteV3AnisetteProvider {
@@ -62,16 +77,6 @@ impl RemoteV3AnisetteProvider {
     pub fn set_serial_number(mut self, serial_number: String) -> RemoteV3AnisetteProvider {
         self.serial_number = serial_number;
         self
-    }
-}
-
-impl Default for RemoteV3AnisetteProvider {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_ANISETTE_V3_URL,
-            Box::new(new_storage()),
-            "0".to_string(),
-        )
     }
 }
 
@@ -133,20 +138,22 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
     }
 
     async fn get_client_info(&mut self) -> Result<AnisetteClientInfo, Report> {
-        if self.client_info.is_none() {
-            let resp = self
-                .client
-                .get(format!("{}/v3/client_info", self.url))
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<AnisetteClientInfo>()
-                .await?;
+        match self.client_info {
+            Some(ref info) => Ok(info.clone()),
+            None => {
+                let resp = self
+                    .client
+                    .get(format!("{}/v3/client_info", self.url))
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<AnisetteClientInfo>()
+                    .await?;
 
-            self.client_info = Some(resp);
+                self.client_info = Some(resp.clone());
+                Ok(resp)
+            }
         }
-
-        Ok(self.client_info.as_ref().unwrap().clone())
     }
 
     fn needs_provisioning(&self) -> Result<bool, Report> {
@@ -181,7 +188,7 @@ impl RemoteV3AnisetteProvider {
             }
         }
 
-        let state = self.state.as_mut().unwrap();
+        let state = self.state.as_mut().ok_or_report()?;
         if !state.is_provisioned() {
             info!("Provisioning required...");
             Self::provision(state, gs, &self.url)
@@ -190,7 +197,7 @@ impl RemoteV3AnisetteProvider {
         }
         let buf = Vec::new();
         let mut writer = std::io::BufWriter::new(buf);
-        plist::to_writer_xml(&mut writer, &state).unwrap();
+        plist::to_writer_xml(&mut writer, &state)?;
         self.storage
             .store_data("anisette_state", &writer.into_inner()?)?;
 

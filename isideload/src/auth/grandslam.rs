@@ -25,7 +25,7 @@ impl GrandSlam {
     /// # Arguments
     /// - `client`: The reqwest client to use for requests
     pub async fn new(client_info: AnisetteClientInfo, debug: bool) -> Result<Self, Report> {
-        let client = Self::build_reqwest_client(debug).unwrap();
+        let client = Self::build_reqwest_client(debug).context("Failed to build HTTP client")?;
         let base_headers = Self::base_headers(&client_info, false)?;
         let url_bag = Self::fetch_url_bag(&client, base_headers).await?;
         Ok(Self {

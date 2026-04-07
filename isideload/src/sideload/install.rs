@@ -3,6 +3,7 @@ use idevice::{
     provider::IdeviceProvider,
 };
 use plist_macro::plist;
+use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
 
 use crate::SideloadError as Error;
@@ -22,7 +23,7 @@ pub async fn install_app(
 
     let dir = format!(
         "PublicStaging/{}",
-        app_path.file_name().unwrap().to_string_lossy()
+        app_path.file_name().ok_or_report()?.to_string_lossy()
     );
     afc_upload_dir(&mut afc_client, app_path, &dir).await?;
 
@@ -67,7 +68,7 @@ fn afc_upload_dir<'a>(
                 let new_afc_path = format!(
                     "{}/{}",
                     afc_path,
-                    path.file_name().unwrap().to_string_lossy()
+                    path.file_name().ok_or_report()?.to_string_lossy()
                 );
                 afc_upload_dir(afc_client, &path, &new_afc_path).await?;
             } else {
@@ -76,7 +77,7 @@ fn afc_upload_dir<'a>(
                         format!(
                             "{}/{}",
                             afc_path,
-                            path.file_name().unwrap().to_string_lossy()
+                            path.file_name().ok_or_report()?.to_string_lossy()
                         ),
                         idevice::afc::opcode::AfcFopenMode::WrOnly,
                     )

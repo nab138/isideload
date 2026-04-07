@@ -33,8 +33,13 @@ impl Application {
 
         if path.is_file() {
             let temp_dir = std::env::temp_dir();
-            let temp_path = temp_dir
-                .join(path.file_name().unwrap().to_string_lossy().to_string() + "_extracted");
+            let temp_path = temp_dir.join(
+                path.file_name()
+                    .ok_or_report()?
+                    .to_string_lossy()
+                    .to_string()
+                    + "_extracted",
+            );
             if temp_path.exists() {
                 std::fs::remove_dir_all(&temp_path)
                     .context("Failed to remove existing temporary directory")?;
@@ -184,7 +189,7 @@ impl Application {
             .collect::<Vec<_>>();
 
         if let Some(available) = list_app_ids_response.available_quantity
-            && app_ids_to_register.len() > available.try_into().unwrap()
+            && app_ids_to_register.len() > available.try_into()?
         {
             bail!(
                 "Not enough available app IDs. {} are required, but only {} are available.",
@@ -219,10 +224,9 @@ impl Application {
         group_identifier: &str,
         cert: &CertificateIdentity,
     ) -> Result<(), Report> {
-        if special.is_none() {
+        let Some(special) = special.as_ref() else {
             return Ok(());
-        }
-        let special = special.as_ref().unwrap();
+        };
 
         if matches!(
             special,

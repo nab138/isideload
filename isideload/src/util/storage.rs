@@ -64,18 +64,27 @@ impl InMemoryStorage {
 
 impl SideloadingStorage for InMemoryStorage {
     fn store(&self, key: &str, value: &str) -> Result<(), Report> {
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self
+            .storage
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         storage.insert(key.to_string(), value.to_string());
         Ok(())
     }
 
     fn retrieve(&self, key: &str) -> Result<Option<String>, Report> {
-        let storage = self.storage.lock().unwrap();
+        let storage = self
+            .storage
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         Ok(storage.get(key).cloned())
     }
 
     fn delete(&self, key: &str) -> Result<(), Report> {
-        let mut storage = self.storage.lock().unwrap();
+        let mut storage = self
+            .storage
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         storage.remove(key);
         Ok(())
     }

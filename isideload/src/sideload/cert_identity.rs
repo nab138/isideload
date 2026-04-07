@@ -4,7 +4,7 @@ use apple_codesign::{
 };
 use hex::ToHex;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
-use rootcause::prelude::*;
+use rootcause::{option_ext::OptionExt, prelude::*};
 use rsa::{
     RsaPrivateKey,
     pkcs1::EncodeRsaPublicKey,
@@ -163,8 +163,9 @@ impl CertificateIdentity {
                     && c.machine_id.is_some()
             })
         {
-            let x509_cert =
-                CapturedX509Certificate::from_der(cert.cert_content.as_ref().unwrap().as_ref())?;
+            let x509_cert = CapturedX509Certificate::from_der(
+                cert.cert_content.as_ref().ok_or_report()?.as_ref(),
+            )?;
 
             if public_key_der == x509_cert.public_key_data().as_ref() {
                 return Ok(Some((cert.clone(), x509_cert)));
@@ -239,7 +240,7 @@ impl CertificateIdentity {
                                     *code,
                                     "Maximum number of certificates reached".to_string(),
                                 ),
-                                existing_certs.as_mut().unwrap(),
+                                existing_certs.as_mut().ok_or_report()?,
                             )
                             .await?;
                         } else {
@@ -292,7 +293,7 @@ impl CertificateIdentity {
                         cert.name, cert.machine_name
                     );
                     developer_session
-                        .revoke_development_cert(team, &cert.serial_number.unwrap(), None)
+                        .revoke_development_cert(team, &cert.serial_number.ok_or_report()?, None)
                         .await?;
                     Ok(())
                 } else {
@@ -307,7 +308,7 @@ impl CertificateIdentity {
                     error!("User did not select any certificates to revoke");
                     return Err(error.into());
                 }
-                for serial in certs_to_revoke.unwrap() {
+                for serial in certs_to_revoke.ok_or_report()? {
                     info!("Revoking certificate with serial number: {}", serial);
                     developer_session
                         .revoke_development_cert(team, &serial, None)

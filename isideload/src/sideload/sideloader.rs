@@ -19,7 +19,7 @@ use crate::{
 use std::path::PathBuf;
 
 use idevice::provider::IdeviceProvider;
-use rootcause::prelude::*;
+use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
 pub struct Sideloader {
@@ -229,14 +229,14 @@ impl Sideloader {
             0 => {
                 bail!("No developer teams available")
             }
-            1 => teams.into_iter().next().unwrap(),
+            1 => teams.into_iter().next().ok_or_report()?,
             _ => {
                 info!(
                     "Multiple developer teams found, {} as per configuration",
                     self.team_selection
                 );
                 match &self.team_selection {
-                    TeamSelection::First => teams.into_iter().next().unwrap(),
+                    TeamSelection::First => teams.into_iter().next().ok_or_report()?,
                     TeamSelection::PromptOnce(prompt_fn)
                     | TeamSelection::PromptAlways(prompt_fn) => {
                         let selection =

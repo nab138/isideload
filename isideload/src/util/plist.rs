@@ -15,14 +15,16 @@ impl SensitivePlistAttachment {
 
     pub fn from_text(text: &str) -> Self {
         let dict: Result<Dictionary, _> = plist::from_bytes(text.as_bytes());
-        if let Err(e) = &dict {
-            error!(
-                "Failed to parse plist text for sensitive attachment, returning empty plist: {:?}",
-                e
-            );
-            return SensitivePlistAttachment::new(Dictionary::new());
+        match dict {
+            Err(e) => {
+                error!(
+                    "Failed to parse plist text for sensitive attachment, returning empty plist: {:?}",
+                    e
+                );
+                return SensitivePlistAttachment::new(Dictionary::new());
+            }
+            Ok(d) => SensitivePlistAttachment::new(d),
         }
-        SensitivePlistAttachment::new(dict.unwrap())
     }
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -104,11 +106,10 @@ impl PlistDataExtract for Dictionary {
 
     fn get_struct<T: DeserializeOwned>(&self, key: &str) -> Result<T, Report> {
         let dict = self.get(key);
-        if dict.is_none() {
-            return Err(report!("Plist missing dictionary for key '{}'", key)
-                .attach(SensitivePlistAttachment::new(self.clone())));
-        }
-        let dict = dict.unwrap();
+        let dict = dict.ok_or_else(|| {
+            report!("Plist missing dictionary for key '{}'", key)
+                .attach(SensitivePlistAttachment::new(self.clone()))
+        })?;
         let struct_data: T = plist::from_value(dict).map_err(|e| {
             report!(
                 "Failed to deserialize plist struct for key '{}': {:?}",

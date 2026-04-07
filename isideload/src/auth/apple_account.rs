@@ -330,7 +330,7 @@ impl AppleAccount {
     }
 
     async fn build_2fa_headers(&self, anisette_data: &AnisetteData) -> Result<HeaderMap, Report> {
-        let mut headers = anisette_data.get_header_map();
+        let mut headers = anisette_data.get_header_map()?;
 
         let spd = self
             .spd

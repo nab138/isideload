@@ -52,9 +52,13 @@ impl AppleAccountBuilder {
     /// Returns an error if the reqwest client cannot be built
     pub async fn build(self) -> Result<AppleAccount, Report> {
         let debug = self.debug.unwrap_or(false);
-        let anisette_generator = self.anisette_generator.unwrap_or_else(|| {
-            AnisetteDataGenerator::new(Arc::new(RwLock::new(RemoteV3AnisetteProvider::default())))
-        });
+        let anisette_generator = match self.anisette_generator {
+            Some(generator) => generator,
+            None => {
+                let provider = RemoteV3AnisetteProvider::default()?;
+                AnisetteDataGenerator::new(Arc::new(RwLock::new(provider)))
+            }
+        };
 
         AppleAccount::new(&self.email, anisette_generator, debug).await
     }

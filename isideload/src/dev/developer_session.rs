@@ -72,7 +72,7 @@ impl DeveloperSession {
             .anisette_generator
             .get_anisette_data(self.client.clone())
             .await?
-            .get_header_map();
+            .get_header_map()?;
 
         headers.insert(
             "X-Apple-GS-Token",
