@@ -11,6 +11,7 @@ use rsa::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding},
 };
 
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tracing::{error, info};
 use x509_certificate::CapturedX509Certificate;
@@ -41,13 +42,17 @@ impl CertificateIdentity {
     /// If you plan to import into SideStore/AltStore, use the machine id as the password
     pub async fn as_p12(&self, password: &str) -> Result<Vec<u8>, Report> {
         let cert_der = self.certificate.encode_der()?;
+        let cert_der_len = cert_der.len();
         let key_der = self.private_key.to_pkcs8_der()?.as_bytes().to_vec();
+        let key_der_len = key_der.len();
 
         let cert = p12_keystore::Certificate::from_der(&cert_der)
             .map_err(|e| report!("Failed to parse certificate: {:?}", e))?;
+        let cert_subject = cert.subject().to_string();
+        let cert_issuer = cert.issuer().to_string();
 
         let local_key_id = {
-            let mut hasher = Sha256::new();
+            let mut hasher = Sha1::new();
             hasher.update(&key_der);
             let hash = hasher.finalize();
             hash[..8].to_vec()
@@ -62,8 +67,31 @@ impl CertificateIdentity {
         );
 
         let writer = keystore.writer(password);
-        let p12 = writer.write().context("Failed to write PKCS#12 archive")?;
-        Ok(p12)
+        match writer.write() {
+            Ok(p12) => Ok(p12),
+            Err(e) => {
+                let subject_codepoints = cert_subject
+                    .chars()
+                    .map(|c| format!("U+{:04X}", c as u32))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let has_non_bmp_subject_chars = cert_subject.chars().any(|c| (c as u32) > 0xFFFF);
+
+                error!(
+                    cert_subject = %cert_subject,
+                    cert_issuer = %cert_issuer,
+                    cert_subject_codepoints = %subject_codepoints,
+                    has_non_bmp_subject_chars,
+                    cert_der_len,
+                    key_der_len,
+                    password_char_len = password.chars().count(),
+                    "Failed to write PKCS#12 archive"
+                );
+
+                let err = format!("Failed to write PKCS#12 archive: {:?}", e);
+                Err(e).context(err)?
+            }
+        }
     }
 
     pub fn get_serial_number(&self) -> String {
