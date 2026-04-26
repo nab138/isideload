@@ -36,8 +36,7 @@ pub struct CertificateIdentity {
 }
 
 impl CertificateIdentity {
-    // This implementation was "heavily inspired" by Impactor (https://github.com/khcrysalis/Impactor/blob/main/crates/plume_core/src/utils/certificate.rs)
-    // It's a little messy and I will clean it up when the rust crypto ecosystem gets through it's next release cycle and I can reduce duplicate dependencies
+    // This implementation was mostly borrowed from Impactor (https://github.com/khcrysalis/Impactor/blob/main/crates/plume_core/src/utils/certificate.rs)
     /// Exports the certificate and private key as a PKCS#12 archive
     /// If you plan to import into SideStore/AltStore, use the machine id as the password
     pub async fn as_p12(&self, password: &str) -> Result<Vec<u8>, Report> {
@@ -58,7 +57,11 @@ impl CertificateIdentity {
             hash[..8].to_vec()
         };
 
-        let key_chain = p12_keystore::PrivateKeyChain::new(key_der, local_key_id, vec![cert]);
+        let key_chain = p12_keystore::PrivateKeyChain::new(
+            local_key_id,
+            p12_keystore::PrivateKey::from_der(&key_der)?,
+            vec![cert],
+        );
 
         let mut keystore = p12_keystore::KeyStore::new();
         keystore.add_entry(
