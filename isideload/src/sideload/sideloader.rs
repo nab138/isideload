@@ -162,11 +162,17 @@ impl Sideloader {
             ext.write_info()?;
         }
 
+        #[cfg(feature = "tokio-mt")]
         tokio::fs::write(
             app.bundle.bundle_dir.join("embedded.mobileprovision"),
             provisioning_profile.encoded_profile.as_ref(),
         )
         .await?;
+
+        #[cfg(not(feature = "tokio-mt"))]
+        {
+            unimplemented!("not yet supported")
+        }
 
         sign::sign(
             &mut app,

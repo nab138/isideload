@@ -6,9 +6,10 @@ use plist_macro::plist;
 use reqwest::header::HeaderMap;
 use rootcause::prelude::*;
 use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use tracing::warn;
+use web_time::SystemTime;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct AnisetteClientInfo {
@@ -100,7 +101,8 @@ impl AnisetteData {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "wasm", async_trait::async_trait(?Send))]
+#[cfg_attr(not(feature = "wasm"), async_trait::async_trait)]
 pub trait AnisetteProvider {
     async fn get_anisette_data(&self) -> Result<AnisetteData, Report>;
 

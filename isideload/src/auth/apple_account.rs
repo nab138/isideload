@@ -90,11 +90,15 @@ impl AppleAccount {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the login fails
-    pub async fn login(
+    pub async fn login<F, Fut>(
         &mut self,
         password: &str,
-        two_factor_callback: impl Fn() -> Option<String>,
-    ) -> Result<(), Report> {
+        two_factor_callback: F,
+    ) -> Result<(), Report>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Option<String>>,
+    {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -179,10 +183,11 @@ impl AppleAccount {
         Ok(pet)
     }
 
-    async fn trusted_device_2fa(
-        &mut self,
-        two_factor_callback: impl Fn() -> Option<String>,
-    ) -> Result<(), Report> {
+    async fn trusted_device_2fa<F, Fut>(&mut self, two_factor_callback: F) -> Result<(), Report>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Option<String>>,
+    {
         debug!("Trusted device 2FA required");
 
         let anisette_data = self
@@ -208,8 +213,9 @@ impl AppleAccount {
 
         info!("Trusted device 2FA request sent");
 
-        let code =
-            two_factor_callback().ok_or_else(|| report!("No 2FA code provided, aborting"))?;
+        let code = two_factor_callback()
+            .await
+            .ok_or_else(|| report!("No 2FA code provided, aborting"))?;
 
         let res = self
             .grandslam_client
@@ -235,10 +241,11 @@ impl AppleAccount {
         Ok(())
     }
 
-    async fn sms_2fa(
-        &mut self,
-        two_factor_callback: impl Fn() -> Option<String>,
-    ) -> Result<(), Report> {
+    async fn sms_2fa<F, Fut>(&mut self, two_factor_callback: F) -> Result<(), Report>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Option<String>>,
+    {
         debug!("SMS 2FA required");
 
         let anisette_data = self
@@ -260,8 +267,9 @@ impl AppleAccount {
 
         info!("SMS 2FA request sent");
 
-        let code =
-            two_factor_callback().ok_or_else(|| report!("No 2FA code provided, aborting"))?;
+        let code = two_factor_callback()
+            .await
+            .ok_or_else(|| report!("No 2FA code provided, aborting"))?;
 
         let body = serde_json::json!({
             "securityCode": {

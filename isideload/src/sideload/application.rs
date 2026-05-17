@@ -271,12 +271,20 @@ impl Application {
                     .context("Failed to encode cert as p12")?;
                 let alt_cert_path = target_bundle.bundle_dir.join(cert_file_name);
 
-                let mut file = tokio::fs::File::create(&alt_cert_path)
-                    .await
-                    .context(format!("Failed to create {}", cert_file_name))?;
-                file.write_all(&p12_bytes)
-                    .await
-                    .context(format!("Failed to write {}", cert_file_name))?;
+                #[cfg(feature = "tokio-mt")]
+                {
+                    let mut file = tokio::fs::File::create(&alt_cert_path)
+                        .await
+                        .context(format!("Failed to create {}", cert_file_name))?;
+                    file.write_all(&p12_bytes)
+                        .await
+                        .context(format!("Failed to write {}", cert_file_name))?;
+                }
+
+                #[cfg(not(feature = "tokio-mt"))]
+                {
+                    unimplemented!("not yet supported")
+                }
             }
         }
         Ok(())

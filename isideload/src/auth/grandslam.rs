@@ -1,20 +1,27 @@
+#[cfg(feature = "wasm")]
+use super::wasm_middleware::WasmProxyMiddleware;
 use plist::Dictionary;
 use plist_macro::plist_to_xml_string;
 use plist_macro::pretty_print_dictionary;
+#[cfg(not(feature = "wasm"))]
+use reqwest::Certificate;
 use reqwest::{
-    Certificate, ClientBuilder,
+    ClientBuilder,
     header::{HeaderMap, HeaderValue},
 };
+#[cfg(feature = "wasm")]
+use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::prelude::*;
 use tracing::debug;
 
 use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
 
+#[cfg(not(feature = "wasm"))]
 const APPLE_ROOT: &[u8] = include_bytes!("./apple_root.der");
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
 
 pub struct GrandSlam {
-    pub client: reqwest::Client,
+    pub client: reqwest_middleware::ClientWithMiddleware,
     pub client_info: AnisetteClientInfo,
     url_bag: Dictionary,
 }
@@ -37,7 +44,7 @@ impl GrandSlam {
 
     /// Fetch the URL bag from GrandSlam and cache it
     pub async fn fetch_url_bag(
-        client: &reqwest::Client,
+        client: &reqwest_middleware::ClientWithMiddleware,
         base_headers: HeaderMap,
     ) -> Result<Dictionary, Report> {
         debug!("Fetching URL bag from GrandSlam");
@@ -70,7 +77,7 @@ impl GrandSlam {
         Ok(url)
     }
 
-    pub fn get(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+    pub fn get(&self, url: &str) -> Result<reqwest_middleware::RequestBuilder, Report> {
         let builder = self
             .client
             .get(url)
@@ -79,7 +86,7 @@ impl GrandSlam {
         Ok(builder)
     }
 
-    pub fn get_sms(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+    pub fn get_sms(&self, url: &str) -> Result<reqwest_middleware::RequestBuilder, Report> {
         let builder = self
             .client
             .get(url)
@@ -88,7 +95,7 @@ impl GrandSlam {
         Ok(builder)
     }
 
-    pub fn post(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+    pub fn post(&self, url: &str) -> Result<reqwest_middleware::RequestBuilder, Report> {
         let builder = self
             .client
             .post(url)
@@ -97,7 +104,7 @@ impl GrandSlam {
         Ok(builder)
     }
 
-    pub fn patch(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+    pub fn patch(&self, url: &str) -> Result<reqwest_middleware::RequestBuilder, Report> {
         let builder = self
             .client
             .patch(url)
@@ -173,16 +180,29 @@ impl GrandSlam {
     /// - `debug`: DANGER, If true, accept invalid certificates and enable verbose connection logging
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
-    pub fn build_reqwest_client(debug: bool) -> Result<reqwest::Client, Report> {
-        let cert = Certificate::from_der(APPLE_ROOT)?;
-        let client = ClientBuilder::new()
-            .add_root_certificate(cert)
-            .http1_title_case_headers()
-            .danger_accept_invalid_certs(debug)
-            .connection_verbose(debug)
-            .build()?;
+    pub fn build_reqwest_client(
+        debug: bool,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            let cert = Certificate::from_der(APPLE_ROOT)?;
+            let client = ClientBuilder::new()
+                .add_root_certificate(cert)
+                .http1_title_case_headers()
+                .danger_accept_invalid_certs(debug)
+                .connection_verbose(debug)
+                .build()?;
 
-        Ok(client)
+            Ok(reqwest_middleware::ClientBuilder::new(client).build())
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let client = ClientBuilder::new().build()?;
+
+            Ok(MwClientBuilder::new(client)
+                .with(WasmProxyMiddleware)
+                .build())
+        }
     }
 }
 

@@ -1,7 +1,7 @@
-use apple_codesign::{
-    SigningSettings,
-    cryptography::{InMemoryPrivateKey, PrivateKey},
-};
+// use apple_codesign::{
+//     SigningSettings,
+//     cryptography::{InMemoryPrivateKey, PrivateKey},
+// };
 use hex::ToHex;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
 use rootcause::{option_ext::OptionExt, prelude::*};
@@ -32,7 +32,7 @@ pub struct CertificateIdentity {
     pub machine_name: String,
     pub certificate: CapturedX509Certificate,
     pub private_key: RsaPrivateKey,
-    pub signing_key: InMemoryPrivateKey,
+    //pub signing_key: InMemoryPrivateKey,
 }
 
 impl CertificateIdentity {
@@ -111,7 +111,7 @@ impl CertificateIdentity {
         max_certs_behavior: &MaxCertsBehavior,
     ) -> Result<Self, Report> {
         let pr = Self::retrieve_private_key(apple_email, storage).await?;
-        let signing_key = Self::build_signing_key(&pr)?;
+        //let signing_key = Self::build_signing_key(&pr)?;
 
         let found = Self::find_matching(&pr, machine_name, developer_session, team).await;
         if let Ok(Some((cert, x509_cert))) = found {
@@ -121,7 +121,7 @@ impl CertificateIdentity {
                 machine_name: cert.machine_name.clone().unwrap_or_default(),
                 certificate: x509_cert,
                 private_key: pr,
-                signing_key,
+                //signing_key,
             });
         }
 
@@ -145,7 +145,7 @@ impl CertificateIdentity {
             machine_name: cert.machine_name.clone().unwrap_or_default(),
             certificate: x509_cert,
             private_key: pr,
-            signing_key,
+            //signing_key,
         })
     }
 
@@ -304,10 +304,10 @@ impl CertificateIdentity {
         Ok(params.serialize_request(&subject_key)?.pem()?)
     }
 
-    fn build_signing_key(private_key: &RsaPrivateKey) -> Result<InMemoryPrivateKey, Report> {
-        let pkcs8 = private_key.to_pkcs8_der()?;
-        Ok(InMemoryPrivateKey::from_pkcs8_der(pkcs8.as_bytes())?)
-    }
+    // fn build_signing_key(private_key: &RsaPrivateKey) -> Result<InMemoryPrivateKey, Report> {
+    //     let pkcs8 = private_key.to_pkcs8_der()?;
+    //     Ok(InMemoryPrivateKey::from_pkcs8_der(pkcs8.as_bytes())?)
+    // }
 
     async fn revoke_others(
         developer_session: &mut DeveloperSession,
@@ -351,17 +351,17 @@ impl CertificateIdentity {
         }
     }
 
-    pub fn setup_signing_settings<'a>(
-        &'a self,
-        settings: &mut SigningSettings<'a>,
-    ) -> Result<(), Report> {
-        settings.set_signing_key(
-            self.signing_key.as_key_info_signer(),
-            self.certificate.clone(),
-        );
-        settings.chain_apple_certificates();
-        settings.set_team_id_from_signing_certificate();
+    // pub fn setup_signing_settings<'a>(
+    //     &'a self,
+    //     settings: &mut SigningSettings<'a>,
+    // ) -> Result<(), Report> {
+    //     settings.set_signing_key(
+    //         self.signing_key.as_key_info_signer(),
+    //         self.certificate.clone(),
+    //     );
+    //     settings.chain_apple_certificates();
+    //     settings.set_team_id_from_signing_certificate();
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

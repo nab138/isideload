@@ -70,13 +70,14 @@ impl AppleAccountBuilder {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
-    pub async fn login<F>(
+    pub async fn login<F, Fut>(
         self,
         password: &str,
         two_factor_callback: F,
     ) -> Result<AppleAccount, Report>
     where
-        F: Fn() -> Option<String>,
+        F: Fn() -> Fut,
+        Fut: Future<Output = Option<String>>,
     {
         let mut account = self.build().await?;
         account.login(password, two_factor_callback).await?;

@@ -1,4 +1,4 @@
-use apple_codesign::{SigningSettings, UnifiedSigner};
+// use apple_codesign::{SigningSettings, UnifiedSigner};
 use plist::Dictionary;
 use plist_macro::plist_to_xml_string;
 use rootcause::{option_ext::OptionExt, prelude::*};
@@ -20,50 +20,47 @@ pub fn sign(
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
 ) -> Result<(), Report> {
-    let mut settings = signing_settings(cert_identity)?;
-    let entitlements: Dictionary = entitlements_from_prov(
-        provisioning_profile.encoded_profile.as_ref(),
-        special,
-        team,
-    )?;
+    // let mut settings = signing_settings(cert_identity)?;
+    // let entitlements: Dictionary =
+    //     entitlements_from_prov(provisioning_profile.encoded_profile.as_ref(), special, team)?;
 
-    settings
-        .set_entitlements_xml(
-            apple_codesign::SettingsScope::Main,
-            plist_to_xml_string(&entitlements),
-        )
-        .context("Failed to set entitlements XML")?;
-    let signer = UnifiedSigner::new(settings);
+    // settings
+    //     .set_entitlements_xml(
+    //         apple_codesign::SettingsScope::Main,
+    //         plist_to_xml_string(&entitlements),
+    //     )
+    //     .context("Failed to set entitlements XML")?;
+    // let signer = UnifiedSigner::new(settings);
 
-    for bundle in app.bundle.collect_bundles_sorted() {
-        info!(
-            "Signing {}",
-            bundle
-                .bundle_dir
-                .file_name()
-                .unwrap_or(bundle.bundle_dir.as_os_str())
-                .to_string_lossy()
-        );
-        signer
-            .sign_path_in_place(&bundle.bundle_dir)
-            .context(format!(
-                "Failed to sign bundle: {}",
-                bundle.bundle_dir.display()
-            ))?;
-    }
+    // for bundle in app.bundle.collect_bundles_sorted() {
+    //     info!(
+    //         "Signing {}",
+    //         bundle
+    //             .bundle_dir
+    //             .file_name()
+    //             .unwrap_or(bundle.bundle_dir.as_os_str())
+    //             .to_string_lossy()
+    //     );
+    //     signer
+    //         .sign_path_in_place(&bundle.bundle_dir)
+    //         .context(format!(
+    //             "Failed to sign bundle: {}",
+    //             bundle.bundle_dir.display()
+    //         ))?;
+    // }
 
     Ok(())
 }
 
-pub fn signing_settings<'a>(cert: &'a CertificateIdentity) -> Result<SigningSettings<'a>, Report> {
-    let mut settings = SigningSettings::default();
+// pub fn signing_settings<'a>(cert: &'a CertificateIdentity) -> Result<SigningSettings<'a>, Report> {
+//     let mut settings = SigningSettings::default();
 
-    cert.setup_signing_settings(&mut settings)?;
-    settings.set_for_notarization(false);
-    settings.set_shallow(true);
+//     cert.setup_signing_settings(&mut settings)?;
+//     settings.set_for_notarization(false);
+//     settings.set_shallow(true);
 
-    Ok(settings)
-}
+//     Ok(settings)
+// }
 
 fn entitlements_from_prov(
     data: &[u8],
