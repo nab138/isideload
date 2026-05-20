@@ -1,7 +1,10 @@
-use crate::dev::{
-    developer_session::DeveloperSession,
-    device_type::{DeveloperDeviceType, dev_url},
-    teams::DeveloperTeam,
+use crate::{
+    SideloadError,
+    dev::{
+        developer_session::DeveloperSession,
+        device_type::{DeveloperDeviceType, dev_url},
+        teams::DeveloperTeam,
+    },
 };
 use plist_macro::plist;
 use rootcause::prelude::*;
@@ -73,11 +76,22 @@ pub trait DevicesApi {
         let device_type = device_type.into();
         let devices = self.list_devices(team, device_type.clone()).await?;
 
-        if !devices.iter().any(|d| d.device_number == udid) {
-            info!("Registering development device");
-            self.add_device(team, name, udid, device_type).await?;
+        if devices.iter().any(|d| d.device_number == udid) {
+            info!("Device is a development device");
+            return Ok(());
         }
-        info!("Device is a development device");
+
+        info!("Registering development device");
+        if let Err(e) = self.add_device(team, name, udid, device_type).await {
+            let already_registered = e
+                .iter_reports()
+                .find_map(|node| node.downcast_current_context::<SideloadError>())
+                .is_some_and(|err| matches!(err, SideloadError::DeveloperError(35, _)));
+            if !already_registered {
+                return Err(e);
+            }
+            info!("Device already registered on team");
+        }
 
         Ok(())
     }
