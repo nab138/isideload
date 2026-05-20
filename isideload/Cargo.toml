@@ -23,7 +23,7 @@ fs-storage = []
 # Once that becomes stable, hopefuly duplicate dependencies should clean up.\
 # Until then, I will wince in pain every time I see how long the output of cargo tree -d is.
 [dependencies]
-idevice = { version = "0.1.61", optional = true, default-features = false, features = ["ring", "afc", "installation_proxy"]}
+idevice = { version = "0.1.61", optional = true, default-features = false, features = ["ring", "afc", "installation_proxy", "remote_pairing", "rsd"]}
 plist = "1.8"
 plist-macro = "0.1.4"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "gzip", "rustls-no-provider", "http2", "charset", "system-proxy"] }
