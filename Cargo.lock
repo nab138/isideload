@@ -1519,11 +1519,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 6.0.0",
  "rand_core 0.10.1",
  "wasip2",
  "wasip3",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2045,7 +2047,7 @@ dependencies = [
  "idevice",
  "isideload-apple-codesign",
  "isideload-p12-keystore",
- "isideload-x509-certificate",
+ "isideload-x509-certificate 0.26.0",
  "keyring",
  "pbkdf2 0.13.0",
  "plist",
@@ -2098,7 +2100,7 @@ dependencies = [
  "isideload-apple-flat-package",
  "isideload-apple-xar",
  "isideload-cryptographic-message-syntax",
- "isideload-x509-certificate",
+ "isideload-x509-certificate 0.25.0",
  "log",
  "md-5",
  "num-traits",
@@ -2172,7 +2174,7 @@ dependencies = [
  "digest 0.10.7",
  "flate2",
  "isideload-cryptographic-message-syntax",
- "isideload-x509-certificate",
+ "isideload-x509-certificate 0.25.0",
  "log",
  "md-5",
  "rand 0.8.6",
@@ -2198,7 +2200,7 @@ dependencies = [
  "bytes",
  "chrono",
  "hex",
- "isideload-x509-certificate",
+ "isideload-x509-certificate 0.25.0",
  "pem",
  "signature 2.2.0",
 ]
@@ -2239,6 +2241,27 @@ dependencies = [
  "der 0.7.10",
  "hex",
  "pem",
+ "signature 2.2.0",
+ "spki 0.7.3",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
+name = "isideload-x509-certificate"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12f85f3d655536bce5bf609cd70283f851e221371eb5724aaa03783a9e804a2f"
+dependencies = [
+ "bcder",
+ "bytes",
+ "chrono",
+ "der 0.7.10",
+ "getrandom 0.2.17",
+ "getrandom 0.4.2",
+ "hex",
+ "pem",
+ "ring",
  "signature 2.2.0",
  "spki 0.7.3",
  "thiserror 2.0.18",
