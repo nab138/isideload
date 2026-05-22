@@ -100,15 +100,16 @@ fn afc_upload_dir<'a>(
     afc_path: &'a str,
 ) -> Pin<Box<dyn Future<Output = Result<(), Report>> + Send + 'a>> {
     Box::pin(async move {
-        let entries = std::fs::read_dir(path)?;
+        let entries = isideload_vfs::fs::read_dir(path)?;
         afc_client
             .mk_dir(afc_path)
             .await
             .map_err(Error::IdeviceError)?;
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            if path.is_dir() {
+            if isideload_vfs::fs::metadata(&path)?.is_dir() {
                 let new_afc_path = format!(
                     "{}/{}",
                     afc_path,
@@ -127,11 +128,14 @@ fn afc_upload_dir<'a>(
                     )
                     .await
                     .map_err(Error::IdeviceError)?;
-                let bytes = std::fs::read(&path)?;
-                file_handle
-                    .write_entire(&bytes)
-                    .await
-                    .map_err(Error::IdeviceError)?;
+
+                let bytes = isideload_vfs::fs::read(&path)?;
+                for chunk in bytes.chunks(8 * 1024) {
+                    file_handle
+                        .write_entire(chunk)
+                        .await
+                        .map_err(Error::IdeviceError)?;
+                }
                 file_handle.close().await.map_err(Error::IdeviceError)?;
             }
         }
