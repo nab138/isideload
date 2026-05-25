@@ -90,7 +90,7 @@ impl Sideloader {
         .context("Failed to retrieve certificate identity")?;
 
         if let Some(callback) = &progress_callback {
-            callback(0.15);
+            callback(0.1).await;
         }
 
         let mut app = Application::new(app_path)?;
@@ -151,7 +151,7 @@ impl Sideloader {
         }
 
         if let Some(callback) = &progress_callback {
-            callback(0.3);
+            callback(0.15).await;
         }
 
         info!("App IDs configured");
@@ -166,7 +166,7 @@ impl Sideloader {
             .await?;
 
         if let Some(callback) = &progress_callback {
-            callback(0.4);
+            callback(0.2).await;
         }
 
         info!("Acquired provisioning profile");
@@ -185,7 +185,7 @@ impl Sideloader {
         )?;
 
         if let Some(callback) = &progress_callback {
-            callback(0.5);
+            callback(0.3).await;
         }
 
         sign::sign(

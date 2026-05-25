@@ -41,7 +41,7 @@ where
 
     for (index, bundle) in sorted_bundles.iter().enumerate() {
         if let Some(callback) = &progress_callback {
-            callback(0.5 + 0.5 * (index as f32 / sorted_bundles.len() as f32)).await;
+            callback(0.3 + 0.7 * (index as f32 / sorted_bundles.len() as f32)).await;
         }
         info!(
             "Signing {}",
