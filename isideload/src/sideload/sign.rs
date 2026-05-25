@@ -19,6 +19,7 @@ pub fn sign(
     provisioning_profile: &Profile,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
+    progress_callback: Option<impl Fn(f32)>,
 ) -> Result<(), Report> {
     let mut settings = signing_settings(cert_identity)?;
     let entitlements: Dictionary =
@@ -32,7 +33,12 @@ pub fn sign(
         .context("Failed to set entitlements XML")?;
     let signer = UnifiedSigner::new(settings);
 
-    for bundle in app.bundle.collect_bundles_sorted() {
+    let sorted_bundles = app.bundle.collect_bundles_sorted();
+
+    for (index, bundle) in sorted_bundles.iter().enumerate() {
+        if let Some(callback) = &progress_callback {
+            callback(0.5 + 0.5 * (index as f32 / sorted_bundles.len() as f32));
+        }
         info!(
             "Signing {}",
             bundle

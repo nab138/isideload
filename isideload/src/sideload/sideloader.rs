@@ -68,7 +68,7 @@ impl Sideloader {
         team: Option<DeveloperTeam>,
         // this will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
-        about_to_sign_callback: Option<impl FnOnce()>,
+        progress_callback: Option<impl Fn(f32)>,
     ) -> Result<(PathBuf, Option<SpecialApp>), Report> {
         let team = match team {
             Some(t) => t,
@@ -84,6 +84,10 @@ impl Sideloader {
         )
         .await
         .context("Failed to retrieve certificate identity")?;
+
+        if let Some(callback) = &progress_callback {
+            callback(0.15);
+        }
 
         let mut app = Application::new(app_path)?;
         let special = app.get_special_app();
@@ -142,6 +146,10 @@ impl Sideloader {
             }
         }
 
+        if let Some(callback) = &progress_callback {
+            callback(0.3);
+        }
+
         info!("App IDs configured");
 
         app.apply_special_app_behavior(&special, &group_identifier, &cert_identity)
@@ -152,6 +160,10 @@ impl Sideloader {
             .dev_session
             .download_team_provisioning_profile(&team, &main_app_id, None)
             .await?;
+
+        if let Some(callback) = &progress_callback {
+            callback(0.4);
+        }
 
         info!("Acquired provisioning profile");
 
@@ -168,8 +180,8 @@ impl Sideloader {
             provisioning_profile.encoded_profile.as_ref(),
         )?;
 
-        if let Some(callback) = about_to_sign_callback {
-            callback();
+        if let Some(callback) = &progress_callback {
+            callback(0.5);
         }
 
         sign::sign(
@@ -178,6 +190,7 @@ impl Sideloader {
             &provisioning_profile,
             &special,
             &team,
+            progress_callback,
         )
         .context("Failed to sign app")?;
 
@@ -194,7 +207,7 @@ impl Sideloader {
         app_path: PathBuf,
         // this is gross but will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
-        about_to_sign_callback: Option<impl FnOnce()>,
+        progress_callback: Option<impl Fn(f32)>,
     ) -> Result<Option<SpecialApp>, Report> {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
@@ -208,7 +221,7 @@ impl Sideloader {
                 app_path,
                 Some(team),
                 increased_memory_limit,
-                about_to_sign_callback,
+                progress_callback,
             )
             .await?;
 
