@@ -13,13 +13,12 @@ use crate::{
     util::plist::PlistDataExtract,
 };
 
-pub fn sign<F, Fut>(
+pub async fn sign<F, Fut>(
     app: &mut Application,
     cert_identity: &CertificateIdentity,
     provisioning_profile: &Profile,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
-    // make progress callback async
     progress_callback: Option<F>,
 ) -> Result<(), Report>
 where
@@ -42,7 +41,7 @@ where
 
     for (index, bundle) in sorted_bundles.iter().enumerate() {
         if let Some(callback) = &progress_callback {
-            callback(0.5 + 0.5 * (index as f32 / sorted_bundles.len() as f32));
+            callback(0.5 + 0.5 * (index as f32 / sorted_bundles.len() as f32)).await;
         }
         info!(
             "Signing {}",
