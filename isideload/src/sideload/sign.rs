@@ -24,7 +24,7 @@ pub fn sign<F, Fut>(
 ) -> Result<(), Report>
 where
     F: Fn(f32) -> Fut,
-    Fut: Future<Output = String>,
+    Fut: Future<Output = ()>,
 {
     let mut settings = signing_settings(cert_identity)?;
     let entitlements: Dictionary =

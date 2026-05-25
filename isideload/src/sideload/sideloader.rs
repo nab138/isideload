@@ -72,7 +72,7 @@ impl Sideloader {
     ) -> Result<(PathBuf, Option<SpecialApp>), Report>
     where
         F: Fn(f32) -> Fut,
-        Fut: Future<Output = String>,
+        Fut: Future<Output = ()>,
     {
         let team = match team {
             Some(t) => t,
@@ -215,7 +215,7 @@ impl Sideloader {
     ) -> Result<Option<SpecialApp>, Report>
     where
         F: Fn(f32) -> Fut,
-        Fut: Future<Output = String>,
+        Fut: Future<Output = ()>,
     {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
