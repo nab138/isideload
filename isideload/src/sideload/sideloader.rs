@@ -68,6 +68,7 @@ impl Sideloader {
         team: Option<DeveloperTeam>,
         // this will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
+        about_to_sign_callback: Option<impl FnOnce()>,
     ) -> Result<(PathBuf, Option<SpecialApp>), Report> {
         let team = match team {
             Some(t) => t,
@@ -167,6 +168,10 @@ impl Sideloader {
             provisioning_profile.encoded_profile.as_ref(),
         )?;
 
+        if let Some(callback) = about_to_sign_callback {
+            callback();
+        }
+
         sign::sign(
             &mut app,
             &cert_identity,
@@ -189,6 +194,7 @@ impl Sideloader {
         app_path: PathBuf,
         // this is gross but will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
+        about_to_sign_callback: Option<impl FnOnce()>,
     ) -> Result<Option<SpecialApp>, Report> {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
@@ -198,7 +204,12 @@ impl Sideloader {
             .await?;
 
         let (signed_app_path, special_app) = self
-            .sign_app(app_path, Some(team), increased_memory_limit)
+            .sign_app(
+                app_path,
+                Some(team),
+                increased_memory_limit,
+                about_to_sign_callback,
+            )
             .await?;
 
         info!("Transferring App...");
