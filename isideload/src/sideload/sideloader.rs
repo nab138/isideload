@@ -62,14 +62,18 @@ impl Sideloader {
     }
 
     /// Sign the app at the provided path and return the path to the signed app bundle (in a temp dir). To sign and install, see [`Self::install_app`].
-    pub async fn sign_app(
+    pub async fn sign_app<F, Fut>(
         &mut self,
         app_path: PathBuf,
         team: Option<DeveloperTeam>,
         // this will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
-        progress_callback: Option<impl Fn(f32)>,
-    ) -> Result<(PathBuf, Option<SpecialApp>), Report> {
+        progress_callback: Option<F>,
+    ) -> Result<(PathBuf, Option<SpecialApp>), Report>
+    where
+        F: Fn(f32) -> Fut,
+        Fut: Future<Output = String>,
+    {
         let team = match team {
             Some(t) => t,
             None => self.get_team().await?,
@@ -201,14 +205,18 @@ impl Sideloader {
 
     #[cfg(feature = "install")]
     /// Sign and install an app to a device.
-    pub async fn install_app(
+    pub async fn install_app<F, Fut>(
         &mut self,
         device_provider: &impl IdeviceProvider,
         app_path: PathBuf,
         // this is gross but will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
-        progress_callback: Option<impl Fn(f32)>,
-    ) -> Result<Option<SpecialApp>, Report> {
+        progress_callback: Option<F>,
+    ) -> Result<Option<SpecialApp>, Report>
+    where
+        F: Fn(f32) -> Fut,
+        Fut: Future<Output = String>,
+    {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
         let team = self.get_team().await?;

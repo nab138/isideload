@@ -13,14 +13,19 @@ use crate::{
     util::plist::PlistDataExtract,
 };
 
-pub fn sign(
+pub fn sign<F, Fut>(
     app: &mut Application,
     cert_identity: &CertificateIdentity,
     provisioning_profile: &Profile,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
-    progress_callback: Option<impl Fn(f32)>,
-) -> Result<(), Report> {
+    // make progress callback async
+    progress_callback: Option<F>,
+) -> Result<(), Report>
+where
+    F: Fn(f32) -> Fut,
+    Fut: Future<Output = String>,
+{
     let mut settings = signing_settings(cert_identity)?;
     let entitlements: Dictionary =
         entitlements_from_prov(provisioning_profile.encoded_profile.as_ref(), special, team)?;
