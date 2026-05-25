@@ -196,6 +196,7 @@ impl Sideloader {
             &team,
             progress_callback,
         )
+        .await
         .context("Failed to sign app")?;
 
         info!("App signed!");
