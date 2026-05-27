@@ -1948,7 +1948,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isideload"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "aes 0.9.0",
  "aes-gcm 0.11.0-rc.3",
@@ -2010,9 +2010,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-codesign"
-version = "0.29.8"
+version = "0.29.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b629cbd926bdf7a98ab30410064d0c2e3578425a8f37dcefd1d35b0147bd170d"
+checksum = "347ff9b4190540f00f7e7cabe65c6dcc8ba97ad01d301643c75f775235c54c9f"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2187,9 +2187,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-simple-file-manifest"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8dcdb6ba256f4af6fe7fe9347ae9cb55c5c1643dfbeaf1925c52f811d7a81da"
+checksum = "57a3e0a8090d8f14e38c7d08b68ca4b9200d87c72b6909131800c6db36a683c5"
 dependencies = [
  "isideload-vfs",
 ]
@@ -2202,9 +2202,9 @@ checksum = "a1133e156a6beed9d5e14a2b9618d52f8c2c6786326f4efbd73c7aecfcabab4c"
 
 [[package]]
 name = "isideload-walkdir"
-version = "2.5.0"
+version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81e3e04a5dc89180d12b6357f253f7bc96eebcb6ac2d9a04c637981e97b3b061"
+checksum = "7ad4075baa7089e82acee9dac0356db0a1c08a03d69b38c70c5a1ce790f9b6e8"
 dependencies = [
  "isideload-vfs",
  "same-file",
