@@ -1948,7 +1948,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isideload"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "aes 0.9.0",
  "aes-gcm 0.11.0-rc.3",
@@ -1997,9 +1997,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-bundles"
-version = "0.21.1"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ab51a22a4fa276ed5bc6c8b601c461a2c6316544018c8ae3b0cb38a1bb88f6d"
+checksum = "285e2bb63164fdcbc79472037acf78adb7e6d7675733f1b3851ff9cfeb82fa47"
 dependencies = [
  "anyhow",
  "isideload-simple-file-manifest",
@@ -2010,9 +2010,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-codesign"
-version = "0.29.9"
+version = "0.29.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "347ff9b4190540f00f7e7cabe65c6dcc8ba97ad01d301643c75f775235c54c9f"
+checksum = "b10cddfa6beb3de51cf1baa2357ff26bb24e78b477e154e166f0f45dd97ddfb6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2087,9 +2087,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-flat-package"
-version = "0.20.4"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26dfce2d65a6ff764ed00071c929330587740ac49d8c6de52426734c20d54a5"
+checksum = "435ff123ac777fe7695d69fecd3739755d8dca97c0bd55ea0889b9870f7bac1c"
 dependencies = [
  "flate2",
  "isideload-apple-xar",
@@ -2102,9 +2102,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-apple-xar"
-version = "0.20.4"
+version = "0.20.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc80d53b5d1d4e148b76f652eadf39400c6ace129e20abbde6bb95a40c07e8f"
+checksum = "d7500d73280fe3c7e55b7050f21d0bc252179e70599e1ec3c773837cd76b2e89"
 dependencies = [
  "base64 0.22.1",
  "bcder",
@@ -2133,9 +2133,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-cpio-archive"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8714e81b190be903e733fb1b611c73f4aa4041b26396f7609ae4c81bcae9f"
+checksum = "09393e5b7801a99cb7843fe6d092a473a5bc21c4e37cea60d11567d9a90bb09b"
 dependencies = [
  "chrono",
  "is_executable",
@@ -2146,9 +2146,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-cryptographic-message-syntax"
-version = "0.31.0"
+version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcde9eb8ab560e20896e48f1f6a9e62c910db422a274ff665f1b580f873a1552"
+checksum = "934440f53a9cf7347b250b47255d93cd59fb00d0f5c18d290416d9d42ea40c6f"
 dependencies = [
  "bcder",
  "bytes",
@@ -2213,9 +2213,9 @@ dependencies = [
 
 [[package]]
 name = "isideload-x509-certificate"
-version = "0.26.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12f85f3d655536bce5bf609cd70283f851e221371eb5724aaa03783a9e804a2f"
+checksum = "c4b4f85267f67c7b282782b65a9602b55d0f1680f6c2170ffb1e8dc9994202fa"
 dependencies = [
  "bcder",
  "bytes",
