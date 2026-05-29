@@ -1,6 +1,14 @@
 use reqwest_middleware::{Middleware, Next};
 
-pub struct WasmProxyMiddleware;
+pub struct WasmProxyMiddleware {
+    proxy_url: String,
+}
+
+impl WasmProxyMiddleware {
+    pub fn new(proxy_url: String) -> Self {
+        Self { proxy_url }
+    }
+}
 
 // You might be wondering, why does this cfg_attr check the target_arch AND the feature when all the others just check the feature?
 // For some reason, I could not get rust analyzer to output errors when the arch was set to wasm32-unknown-unknown
@@ -20,10 +28,7 @@ impl Middleware for WasmProxyMiddleware {
         next: Next<'_>,
     ) -> reqwest_middleware::Result<reqwest::Response> {
         let original = req.url().to_string();
-        let proxied = format!(
-            "https://worker.nabdev.workers.dev/?url={}",
-            urlencoding::encode(&original)
-        );
+        let proxied = format!("{}{}", self.proxy_url, urlencoding::encode(&original));
         *req.url_mut() = proxied.parse().unwrap();
         next.run(req, extensions).await
     }

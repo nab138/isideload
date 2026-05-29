@@ -1,5 +1,4 @@
-#[cfg(feature = "wasm")]
-use super::wasm_middleware::WasmProxyMiddleware;
+use super::middleware::WasmProxyMiddleware;
 use plist::Dictionary;
 use plist_macro::plist_to_xml_string;
 use plist_macro::pretty_print_dictionary;
@@ -9,7 +8,6 @@ use reqwest::{
     ClientBuilder,
     header::{HeaderMap, HeaderValue},
 };
-#[cfg(feature = "wasm")]
 use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::prelude::*;
 use tracing::debug;
@@ -31,8 +29,13 @@ impl GrandSlam {
     ///
     /// # Arguments
     /// - `client`: The reqwest client to use for requests
-    pub async fn new(client_info: AnisetteClientInfo, debug: bool) -> Result<Self, Report> {
-        let client = Self::build_reqwest_client(debug).context("Failed to build HTTP client")?;
+    pub async fn new(
+        client_info: AnisetteClientInfo,
+        debug: bool,
+        proxy_url: Option<String>,
+    ) -> Result<Self, Report> {
+        let client =
+            Self::build_reqwest_client(debug, proxy_url).context("Failed to build HTTP client")?;
         let base_headers = Self::base_headers(&client_info, false)?;
         let url_bag = Self::fetch_url_bag(&client, base_headers).await?;
         Ok(Self {
@@ -182,27 +185,27 @@ impl GrandSlam {
     /// Returns an error if the reqwest client cannot be built
     pub fn build_reqwest_client(
         debug: bool,
+        proxy_url: Option<String>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
         #[cfg(not(feature = "wasm"))]
-        {
-            let cert = Certificate::from_der(APPLE_ROOT)?;
-            let client = ClientBuilder::new()
-                .add_root_certificate(cert)
-                .http1_title_case_headers()
-                .danger_accept_invalid_certs(debug)
-                .connection_verbose(debug)
-                .build()?;
-
-            Ok(reqwest_middleware::ClientBuilder::new(client).build())
-        }
+        let cert = Certificate::from_der(APPLE_ROOT)?;
+        #[cfg(not(feature = "wasm"))]
+        let client = ClientBuilder::new()
+            .add_root_certificate(cert)
+            .http1_title_case_headers()
+            .danger_accept_invalid_certs(debug)
+            .connection_verbose(debug)
+            .build()?;
         #[cfg(feature = "wasm")]
-        {
-            let client = ClientBuilder::new().build()?;
+        let client = ClientBuilder::new().build()?;
 
-            Ok(MwClientBuilder::new(client)
-                .with(WasmProxyMiddleware)
-                .build())
-        }
+        let builder = MwClientBuilder::new(client);
+        let builder = if let Some(proxy_url) = proxy_url {
+            builder.with(WasmProxyMiddleware::new(proxy_url))
+        } else {
+            builder
+        };
+        Ok(builder.build())
     }
 }
 
