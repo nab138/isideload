@@ -62,6 +62,7 @@ impl AppleAccount {
         email: &str,
         anisette_generator: AnisetteDataGenerator,
         debug: bool,
+        proxy_url: Option<String>,
     ) -> Result<Self, Report> {
         if debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -72,7 +73,7 @@ impl AppleAccount {
             .await
             .context("Failed to get anisette client info")?;
 
-        let grandslam_client = GrandSlam::new(client_info, debug).await?;
+        let grandslam_client = GrandSlam::new(client_info, debug, proxy_url.clone()).await?;
 
         Ok(AppleAccount {
             email: email.to_string(),

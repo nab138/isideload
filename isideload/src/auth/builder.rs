@@ -12,6 +12,7 @@ pub struct AppleAccountBuilder {
     email: String,
     debug: Option<bool>,
     anisette_generator: Option<AnisetteDataGenerator>,
+    proxy_url: Option<String>,
 }
 
 impl AppleAccountBuilder {
@@ -24,6 +25,7 @@ impl AppleAccountBuilder {
             email: email.to_string(),
             debug: None,
             anisette_generator: None,
+            proxy_url: None,
         }
     }
 
@@ -33,6 +35,11 @@ impl AppleAccountBuilder {
     /// - `debug`: If true, accept invalid certificates and enable verbose connection logging
     pub fn danger_debug(mut self, debug: bool) -> Self {
         self.debug = Some(debug);
+        self
+    }
+
+    pub fn proxy_url(mut self, proxy_url: String) -> Self {
+        self.proxy_url = Some(proxy_url);
         self
     }
 
@@ -60,7 +67,7 @@ impl AppleAccountBuilder {
             }
         };
 
-        AppleAccount::new(&self.email, anisette_generator, debug).await
+        AppleAccount::new(&self.email, anisette_generator, debug, self.proxy_url).await
     }
 
     /// Build the AppleAccount and log in

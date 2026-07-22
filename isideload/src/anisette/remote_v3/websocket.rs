@@ -18,14 +18,26 @@ pub struct AppWebSocket {
 }
 
 impl AppWebSocket {
-    pub async fn connect(url: &str) -> Result<Self, Report> {
+    pub async fn connect(url: &str, proxy_url: Option<&str>) -> Result<Self, Report> {
+        let target_url = if proxy_url.is_some() {
+            let proxied = format!(
+                "{}{}",
+                proxy_url.unwrap(),
+                urlencoding::encode(url)
+            )
+            .replace("https://", "wss://");
+            proxied
+        } else {
+            url.to_string()
+        };
+
         #[cfg(not(feature = "wasm"))]
         {
             use tokio::time::{Duration, timeout};
 
             let (stream, _) = timeout(
                 Duration::from_secs(30),
-                tokio_tungstenite::connect_async(url),
+                tokio_tungstenite::connect_async(&target_url),
             )
             .await?
             .context(
@@ -35,13 +47,7 @@ impl AppWebSocket {
         }
         #[cfg(feature = "wasm")]
         {
-            let proxied = format!(
-                "https://worker.nabdev.workers.dev/?url={}",
-                urlencoding::encode(url)
-            )
-            .replace("https://", "wss://");
-
-            let (meta, stream) = ws_stream_wasm::WsMeta::connect(&proxied, None)
+            let (meta, stream) = ws_stream_wasm::WsMeta::connect(&target_url, None)
                 .await
                 .map_err(|e| report!("WS connect failed: {e:?}"))?;
             Ok(Self {

@@ -10,7 +10,6 @@ use reqwest::{
     ClientBuilder,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
 };
-#[cfg(feature = "wasm")]
 use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
@@ -33,6 +32,7 @@ pub struct RemoteV3AnisetteProvider {
     serial_number: String,
     client_info: Option<AnisetteClientInfo>,
     client: reqwest_middleware::ClientWithMiddleware,
+    websocket_proxy: Option<String>,
 }
 
 impl RemoteV3AnisetteProvider {
@@ -53,26 +53,32 @@ impl RemoteV3AnisetteProvider {
             storage,
             serial_number,
             client_info: None,
-            client: Self::build_reqwest_client()?,
+            client: Self::build_reqwest_client(None)?,
+            websocket_proxy: None,
         })
     }
 
-    fn build_reqwest_client() -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
-        #[cfg(not(feature = "wasm"))]
-        {
-            let client = ClientBuilder::new().build()?;
+    pub fn set_websocket_proxy(mut self, websocket_proxy: Option<String>) -> Result<Self, Report> {
+        self.websocket_proxy = websocket_proxy;
+        self.client = Self::build_reqwest_client(self.websocket_proxy.clone())?;
+        Ok(self)
+    }
 
-            Ok(reqwest_middleware::ClientBuilder::new(client).build())
-        }
-        #[cfg(feature = "wasm")]
-        {
-            use crate::auth::wasm_middleware::WasmProxyMiddleware;
+    fn build_reqwest_client(
+        websocket_proxy: Option<String>,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
+        if let Some(websocket_proxy) = websocket_proxy {
+            use crate::auth::middleware::WasmProxyMiddleware;
 
             let client = ClientBuilder::new().build()?;
 
             Ok(MwClientBuilder::new(client)
-                .with(WasmProxyMiddleware)
+                .with(WasmProxyMiddleware::new(websocket_proxy))
                 .build())
+        } else {
+            let client = ClientBuilder::new().build()?;
+
+            Ok(MwClientBuilder::new(client).build())
         }
     }
 
@@ -212,7 +218,7 @@ impl RemoteV3AnisetteProvider {
         let state = self.state.as_mut().ok_or_report()?;
         if !state.is_provisioned() {
             info!("Provisioning required...");
-            Self::provision(state, gs, &self.url)
+            Self::provision(state, gs, &self.url, self.websocket_proxy.as_deref())
                 .await
                 .context("Failed to provision")?;
         }
@@ -254,6 +260,7 @@ impl RemoteV3AnisetteProvider {
         state: &mut AnisetteState,
         gs: Arc<GrandSlam>,
         url: &str,
+        proxy_url: Option<&str>,
     ) -> Result<(), Report> {
         let start_provisioning = gs.get_url("midStartProvisioning")?;
         let end_provisioning = gs.get_url("midFinishProvisioning")?;
@@ -274,7 +281,7 @@ impl RemoteV3AnisetteProvider {
         // .context("Failed to connect to provisioning socket")?
         // .context("Failed to connect to provisioning socket")?;
 
-        let mut ws = AppWebSocket::connect(&websocket_url)
+        let mut ws = AppWebSocket::connect(&websocket_url, proxy_url.as_deref())
             .await
             .context("Failed to connect to provisioning socket")?;
 
