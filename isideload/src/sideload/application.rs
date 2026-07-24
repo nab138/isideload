@@ -12,7 +12,7 @@ use rootcause::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{info, warn};
 use zip::ZipArchive;
 
 pub struct Application {
@@ -188,14 +188,23 @@ impl Application {
             })
             .collect::<Vec<_>>();
 
-        if let Some(available) = list_app_ids_response.available_quantity
-            && app_ids_to_register.len() > available.try_into()?
-        {
-            bail!(
-                "Not enough available app IDs. {} are required, but only {} are available.",
-                app_ids_to_register.len(),
-                available
-            );
+        if let Some(available) = list_app_ids_response.available_quantity {
+            if available < 0 {
+                warn!(
+                    "Apple reports a negative number of available app IDs ({}), which shouldn't be possible.",
+                    available
+                );
+                // Since the App IDs should never be negative in the first place, it might still be worth trying to register them anyways. Who knows.
+            } else {
+                // We only do the conversion if available is positive, else we get an integral conversion error
+                if app_ids_to_register.len() > available.try_into()? {
+                    bail!(
+                        "Not enough available app IDs. {} are required, but only {} are available.",
+                        app_ids_to_register.len(),
+                        available
+                    );
+                }
+            }
         }
 
         for bundle in app_ids_to_register {
