@@ -50,7 +50,7 @@ x509-certificate = { version = "0.26.0", package = "isideload-x509-certificate" 
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
 p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
 zip = { version = "8.3", default-features = false, features = ["deflate"] }
-apple-codesign = { version = "0.29.4", package = "isideload-apple-codesign" }
+apple-codesign = { version = "0.29.5", package = "isideload-apple-codesign" }
 sha1 = "0.11.0"
 
 # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.
