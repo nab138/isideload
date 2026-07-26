@@ -88,6 +88,15 @@ impl GrandSlam {
         Ok(builder)
     }
 
+    pub fn put_sms(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+        let builder = self
+            .client
+            .put(url)
+            .headers(Self::base_headers(&self.client_info, true)?);
+
+        Ok(builder)
+    }
+
     pub fn post(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
         let builder = self
             .client

@@ -247,11 +247,28 @@ impl AppleAccount {
             .await
             .context("Failed to get anisette data for 2FA")?;
 
-        let request_code_url = self.grandslam_client.get_url("secondaryAuth")?;
+        //let request_code_url = self.grandslam_client.get_url("secondaryAuth")?;
+
+        // self.grandslam_client
+        //     .get_sms(&request_code_url)?
+        //     .headers(self.build_2fa_headers(&anisette_data).await?)
+        //     .send()
+        //     .await
+        //     .context("Failed to request SMS 2FA")?
+        //     .error_for_status()
+        //     .context("SMS 2FA request failed")?;
+
+        let send_body = serde_json::json!({
+            "phoneNumber": {
+                "id": 1
+            },
+            "mode": "sms"
+        });
 
         self.grandslam_client
-            .get_sms(&request_code_url)?
+            .put_sms("https://gsa.apple.com/auth/verify/phone")?
             .headers(self.build_2fa_headers(&anisette_data).await?)
+            .body(send_body.to_string())
             .send()
             .await
             .context("Failed to request SMS 2FA")?
