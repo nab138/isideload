@@ -158,6 +158,9 @@ impl GrandSlam {
         if !sms {
             headers.insert("Content-Type", HeaderValue::from_static("text/x-xml-plist"));
             headers.insert("Accept", HeaderValue::from_static("text/x-xml-plist"));
+        } else {
+            headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+            headers.insert("Accept", HeaderValue::from_static("application/json"));
         }
         headers.insert(
             "X-Mme-Client-Info",
