@@ -439,6 +439,13 @@ impl AppleAccount {
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
+            if error.code == "-22981" {
+                // Too many verification codes have been sent. - Enter the last code you received or try again later.
+                // Not sure why there are two identical errors with different codes
+                warn!("{} - {}", error.title, error.message);
+                return Ok(LoginState::NeedsUnknown2FA);
+            }
+
             bail!(
                 "SMS 2FA request failed (code {}): {} - {}",
                 error.code,
