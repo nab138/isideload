@@ -199,9 +199,15 @@ impl Application {
                 // We only do the conversion if available is positive, else we get an integral conversion error
                 if app_ids_to_register.len() > available.try_into()? {
                     bail!(
-                        "Not enough available app IDs. {} are required, but only {} are available.",
+                        "Not enough available app IDs. {} {} required, but only {} {} available.",
                         app_ids_to_register.len(),
-                        available
+                        if app_ids_to_register.len() == 1 {
+                            "is"
+                        } else {
+                            "are"
+                        },
+                        available,
+                        if available == 1 { "is" } else { "are" }
                     );
                 }
             }
