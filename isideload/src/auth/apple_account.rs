@@ -63,10 +63,11 @@ pub struct TwoFactorCallbackParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct TwoFactorCallbackResponse {
-    pub prefers_sms: bool,
-    pub code: Option<String>,
-    pub selected_number_id: Option<u32>,
+pub enum TwoFactorCallbackResponse {
+    SubmitCode(String),
+    SendSms(u32),
+    SendToDevices,
+    ResendCode,
 }
 
 pub type TwoFactorCallback =
@@ -142,9 +143,9 @@ impl AppleAccount {
 
         loop {
             attempts += 1;
-            if attempts > 10 {
+            if attempts > 15 {
                 bail!(
-                    "Couldn't login after 10 attempts, aborting (current state: {:?})",
+                    "Couldn't login after 15 attempts, aborting (current state: {:?})",
                     self.login_state
                 );
             }
@@ -169,20 +170,20 @@ impl AppleAccount {
                         selected_number_id: None,
                     });
 
-                    if let Some(code) = response.code {
-                        self.verify_trusted_device_2fa(code)
-                            .await
-                            .context("Failed to verify trusted device 2FA")?;
-                        self.login_state = LoginState::NeedsLogin;
-                    } else if response.prefers_sms {
-                        if let Some(selected_number_id) = response.selected_number_id {
-                            self.login_state = self.select_number(selected_number_id)?;
-                        } else {
-                            warn!("SMS 2FA preferred, but no number selected, trying 1");
-                            self.login_state = self.select_number(1)?;
+                    match response {
+                        TwoFactorCallbackResponse::SubmitCode(code) => {
+                            self.verify_trusted_device_2fa(code)
+                                .await
+                                .context("Failed to verify trusted device 2FA")?;
+                            self.login_state = LoginState::NeedsLogin;
                         }
-                    } else {
-                        bail!("No 2FA code provided, aborting");
+                        TwoFactorCallbackResponse::SendSms(selected_number_id) => {
+                            self.login_state = self.select_number(selected_number_id)?;
+                        }
+                        TwoFactorCallbackResponse::SendToDevices
+                        | TwoFactorCallbackResponse::ResendCode => {
+                            self.login_state = LoginState::NeedsDevice2FA;
+                        }
                     }
                 }
                 LoginState::NeedsSMS2FA(id) => {
@@ -202,17 +203,22 @@ impl AppleAccount {
                         selected_number_id: Some(id),
                     });
 
-                    if let Some(code) = response.code {
-                        self.login_state = self
-                            .verify_sms_2fa(code, id)
-                            .await
-                            .context("Failed to verify SMS 2FA")?;
-                    } else if !response.prefers_sms {
-                        self.login_state = LoginState::NeedsDevice2FA;
-                    } else if let Some(selected_number_id) = response.selected_number_id {
-                        self.login_state = self.select_number(selected_number_id)?;
-                    } else {
-                        bail!("No 2FA code provided, aborting");
+                    match response {
+                        TwoFactorCallbackResponse::SubmitCode(code) => {
+                            self.verify_sms_2fa(code, id)
+                                .await
+                                .context("Failed to verify trusted device 2FA")?;
+                            self.login_state = LoginState::NeedsLogin;
+                        }
+                        TwoFactorCallbackResponse::SendSms(selected_number_id) => {
+                            self.login_state = self.select_number(selected_number_id)?;
+                        }
+                        TwoFactorCallbackResponse::ResendCode => {
+                            self.login_state = LoginState::NeedsSMS2FA(id);
+                        }
+                        TwoFactorCallbackResponse::SendToDevices => {
+                            self.login_state = LoginState::NeedsDevice2FA;
+                        }
                     }
                 }
                 LoginState::NeedsExtraStep(s) => {
@@ -463,7 +469,7 @@ impl AppleAccount {
         {
             let numbers: Vec<TrustedNumber> = serde_json::from_value(numbers.clone())
                 .context("Failed to parse trusted phone numbers")?;
-            info!(
+            debug!(
                 "Retrieved {} trusted phone numbers (status {}): {:?}",
                 numbers.len(),
                 status,
@@ -482,7 +488,7 @@ impl AppleAccount {
     fn select_number(&self, selected_number_id: u32) -> Result<LoginState, Report> {
         let numbers = self.trusted_phone_numbers.clone().unwrap_or_default();
         if let Some(number) = numbers.iter().find(|n| n.id == selected_number_id) {
-            info!("Selected trusted number: {}", number.number_with_dial_code);
+            debug!("Selected trusted number: {}", number.number_with_dial_code);
             return Ok(LoginState::NeedsSMS2FA(number.id));
         }
         bail!("Selected trusted number ID not found in trusted numbers");

@@ -1,3 +1,4 @@
+use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
@@ -8,7 +9,7 @@ use isideload::{
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
     util::{keyring_storage::KeyringStorage, storage::InMemoryStorage},
 };
-use std::env;
+use std::{env, path::PathBuf};
 
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -27,10 +28,10 @@ async fn main() {
         .get(1)
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(2).expect("Please provide the Apple ID password");
-    // let app_path = PathBuf::from(
-    //     args.get(3)
-    //         .expect("Please provide the path to the app to install"),
-    // );
+    let app_path = PathBuf::from(
+        args.get(3)
+            .expect("Please provide the path to the app to install"),
+    );
 
     let get_2fa_code = |params: TwoFactorCallbackParams| {
         let mut code = String::new();
@@ -67,30 +68,24 @@ async fn main() {
             println!("Or, enter \"d\" to have the code sent to your devices instead.");
         }
 
+        println!("Enter \"r\" to resend the code.");
+
         std::io::stdin().read_line(&mut code).unwrap();
 
         if code.trim().starts_with('p') {
             let selected_id = code.trim()[1..].parse::<u32>().unwrap();
-            return TwoFactorCallbackResponse {
-                prefers_sms: true,
-                code: None,
-                selected_number_id: Some(selected_id),
-            };
+            return TwoFactorCallbackResponse::SendSms(selected_id);
         }
 
         if code.trim() == "d" {
-            return TwoFactorCallbackResponse {
-                prefers_sms: false,
-                code: None,
-                selected_number_id: None,
-            };
+            return TwoFactorCallbackResponse::SendToDevices;
         }
 
-        TwoFactorCallbackResponse {
-            prefers_sms: false,
-            code: Some(code.trim().to_string()),
-            selected_number_id: None,
+        if code.trim() == "r" {
+            return TwoFactorCallbackResponse::ResendCode;
         }
+
+        TwoFactorCallbackResponse::SubmitCode(code.trim().to_string())
     };
 
     let account = AppleAccount::builder(apple_id)
@@ -109,21 +104,21 @@ async fn main() {
         .await
         .expect("Failed to create developer session");
 
-    // let usbmuxd = UsbmuxdConnection::default().await;
-    // if usbmuxd.is_err() {
-    //     panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
-    // }
-    // let mut usbmuxd = usbmuxd.unwrap();
+    let usbmuxd = UsbmuxdConnection::default().await;
+    if usbmuxd.is_err() {
+        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
+    }
+    let mut usbmuxd = usbmuxd.unwrap();
 
-    // let devs = usbmuxd.get_devices().await.unwrap();
-    // if devs.is_empty() {
-    //     panic!("No devices found");
-    // }
+    let devs = usbmuxd.get_devices().await.unwrap();
+    if devs.is_empty() {
+        panic!("No devices found");
+    }
 
-    // let provider = devs
-    //     .first()
-    //     .unwrap()
-    //     .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
+    let provider = devs
+        .first()
+        .unwrap()
+        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
     let team_selection_prompt = |teams: &Vec<DeveloperTeam>| {
         println!("Please select a team:");
@@ -174,16 +169,16 @@ async fn main() {
         )
     };
 
-    let _ = SideloaderBuilder::new(dev_session, apple_id.to_string())
+    let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
         .max_certs_behavior(MaxCertsBehavior::Prompt(Box::new(cert_selection_prompt)))
         .storage(Box::new(KeyringStorage::new("minimal".to_string())))
         .machine_name("isideload-minimal".to_string())
         .build();
 
-    // let result = sideloader.install_app(&provider, app_path, true).await;
-    // match result {
-    //     Ok(_) => println!("App installed successfully"),
-    //     Err(e) => panic!("{}", e),
-    // }
+    let result = sideloader.install_app(&provider, app_path, true).await;
+    match result {
+        Ok(_) => println!("App installed successfully"),
+        Err(e) => panic!("{}", e),
+    }
 }
