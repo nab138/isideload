@@ -49,7 +49,6 @@ async fn main() {
             }
         );
 
-        // step 1: filter the trusted numbers to only those that aren't the selected number
         let other_numbers: Vec<_> = params
             .numbers
             .iter()
@@ -64,17 +63,31 @@ async fn main() {
             }
         }
 
+        if params.sms {
+            println!("Or, enter \"d\" to have the code sent to your devices instead.");
+        }
+
         std::io::stdin().read_line(&mut code).unwrap();
 
         if code.trim().starts_with('p') {
             let selected_id = code.trim()[1..].parse::<u32>().unwrap();
             return TwoFactorCallbackResponse {
+                prefers_sms: true,
                 code: None,
                 selected_number_id: Some(selected_id),
             };
         }
 
+        if code.trim() == "d" {
+            return TwoFactorCallbackResponse {
+                prefers_sms: false,
+                code: None,
+                selected_number_id: None,
+            };
+        }
+
         TwoFactorCallbackResponse {
+            prefers_sms: false,
             code: Some(code.trim().to_string()),
             selected_number_id: None,
         }

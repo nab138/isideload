@@ -23,7 +23,7 @@ use rootcause::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use srp::{ClientVerifier, groups::G2048};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct AppleAccount {
     pub email: String,
@@ -39,7 +39,9 @@ pub struct AppleAccount {
 pub enum LoginState {
     LoggedIn,
     NeedsDevice2FA,
+    NeedsDevice2FAVerification,
     NeedsSMS2FA(u32),
+    NeedsSMS2FAVerification(u32),
     NeedsExtraStep(String),
     NeedsLogin,
 }
@@ -62,6 +64,7 @@ pub struct TwoFactorCallbackParams {
 
 #[derive(Debug, Clone)]
 pub struct TwoFactorCallbackResponse {
+    pub prefers_sms: bool,
     pub code: Option<String>,
     pub selected_number_id: Option<u32>,
 }
@@ -154,18 +157,63 @@ impl AppleAccount {
                     if self.trusted_phone_numbers.is_none() {
                         self.trusted_phone_numbers = Some(self.get_trusted_numbers().await?);
                     }
-                    self.trusted_device_2fa(&two_factor_callback)
+                    self.send_trusted_device_2fa()
                         .await
                         .context("Failed to complete trusted device 2FA")?;
+                    self.login_state = LoginState::NeedsDevice2FAVerification;
+                }
+                LoginState::NeedsDevice2FAVerification => {
+                    let response = two_factor_callback(TwoFactorCallbackParams {
+                        sms: false,
+                        numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
+                        selected_number_id: None,
+                    });
+
+                    if let Some(code) = response.code {
+                        self.verify_trusted_device_2fa(code)
+                            .await
+                            .context("Failed to verify trusted device 2FA")?;
+                        self.login_state = LoginState::NeedsLogin;
+                    } else if response.prefers_sms {
+                        if let Some(selected_number_id) = response.selected_number_id {
+                            self.login_state = self.select_number(selected_number_id)?;
+                        } else {
+                            warn!("SMS 2FA preferred, but no number selected, trying 1");
+                            self.login_state = self.select_number(1)?;
+                        }
+                    } else {
+                        bail!("No 2FA code provided, aborting");
+                    }
                 }
                 LoginState::NeedsSMS2FA(id) => {
                     if self.trusted_phone_numbers.is_none() {
                         self.trusted_phone_numbers = Some(self.get_trusted_numbers().await?);
                     }
                     info!("SMS 2FA required");
-                    self.sms_2fa(&two_factor_callback, id)
+                    self.send_sms_2fa(id)
                         .await
                         .context("Failed to complete SMS 2FA")?;
+                    self.login_state = LoginState::NeedsSMS2FAVerification(id);
+                }
+                LoginState::NeedsSMS2FAVerification(id) => {
+                    let response = two_factor_callback(TwoFactorCallbackParams {
+                        sms: true,
+                        numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
+                        selected_number_id: Some(id),
+                    });
+
+                    if let Some(code) = response.code {
+                        self.login_state = self
+                            .verify_sms_2fa(code, id)
+                            .await
+                            .context("Failed to verify SMS 2FA")?;
+                    } else if !response.prefers_sms {
+                        self.login_state = LoginState::NeedsDevice2FA;
+                    } else if let Some(selected_number_id) = response.selected_number_id {
+                        self.login_state = self.select_number(selected_number_id)?;
+                    } else {
+                        bail!("No 2FA code provided, aborting");
+                    }
                 }
                 LoginState::NeedsExtraStep(s) => {
                     info!("Additional authentication step required: {}", s);
@@ -209,10 +257,7 @@ impl AppleAccount {
         Ok(pet)
     }
 
-    async fn trusted_device_2fa(
-        &mut self,
-        two_factor_callback: &TwoFactorCallback,
-    ) -> Result<(), Report> {
+    async fn send_trusted_device_2fa(&mut self) -> Result<(), Report> {
         debug!("Trusted device 2FA required");
 
         let anisette_data = self
@@ -225,8 +270,6 @@ impl AppleAccount {
             .grandslam_client
             .get_url("trustedDeviceSecondaryAuth")?;
 
-        let submit_code_url = self.grandslam_client.get_url("validateCode")?;
-
         self.grandslam_client
             .get(&request_code_url)?
             .headers(self.build_2fa_headers(&anisette_data).await?)
@@ -238,49 +281,45 @@ impl AppleAccount {
 
         info!("Trusted device 2FA request sent");
 
-        let response = two_factor_callback(TwoFactorCallbackParams {
-            sms: false,
-            numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
-            selected_number_id: None,
-        });
-        if let Some(code) = response.code {
-            let res = self
-                .grandslam_client
-                .get(&submit_code_url)?
-                .headers(self.build_2fa_headers(&anisette_data).await?)
-                .header("security-code", code)
-                .send()
-                .await
-                .context("Failed to submit trusted device 2fa code")?
-                .error_for_status()
-                .context("Trusted device 2FA code submission failed")?
-                .text()
-                .await
-                .context("Failed to read trusted device 2FA response text")?;
+        Ok(())
+    }
 
-            let plist: Dictionary = plist::from_bytes(res.as_bytes())
-                .context("Failed to parse trusted device response plist")
-                .attach_with(|| res.clone())?;
-            plist
-                .check_grandslam_error()
-                .context("Trusted device 2FA rejected")?;
+    async fn verify_trusted_device_2fa(&mut self, code: String) -> Result<(), Report> {
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for 2FA")?;
 
-            debug!("Trusted device 2FA completed, need to login again");
-            self.login_state = LoginState::NeedsLogin;
-        } else if let Some(selected_number_id) = response.selected_number_id {
-            self.login_state = self.select_number(selected_number_id)?;
-        } else {
-            bail!("No 2FA code provided, aborting");
-        }
+        let submit_code_url = self.grandslam_client.get_url("validateCode")?;
+
+        let res = self
+            .grandslam_client
+            .get(&submit_code_url)?
+            .headers(self.build_2fa_headers(&anisette_data).await?)
+            .header("security-code", code)
+            .send()
+            .await
+            .context("Failed to submit trusted device 2fa code")?
+            .error_for_status()
+            .context("Trusted device 2FA code submission failed")?
+            .text()
+            .await
+            .context("Failed to read trusted device 2FA response text")?;
+
+        let plist: Dictionary = plist::from_bytes(res.as_bytes())
+            .context("Failed to parse trusted device response plist")
+            .attach_with(|| res.clone())?;
+        plist
+            .check_grandslam_error()
+            .context("Trusted device 2FA rejected")?;
+
+        debug!("Trusted device 2FA completed, need to login again");
 
         Ok(())
     }
 
-    async fn sms_2fa(
-        &mut self,
-        two_factor_callback: &TwoFactorCallback,
-        id: u32,
-    ) -> Result<(), Report> {
+    async fn send_sms_2fa(&mut self, id: u32) -> Result<(), Report> {
         debug!("SMS 2FA required");
 
         let anisette_data = self
@@ -307,92 +346,100 @@ impl AppleAccount {
             "mode": "sms"
         });
 
-        self.grandslam_client
+        let res = self
+            .grandslam_client
             .put_sms("https://gsa.apple.com/auth/verify/phone")?
             .headers(self.build_2fa_headers(&anisette_data).await?)
             .body(send_body.to_string())
             .send()
             .await
-            .context("Failed to request SMS 2FA")?
-            .error_for_status()
-            .context("SMS 2FA request failed")?;
+            .context("Failed to request SMS 2FA")?;
+
+        let status = res.status();
+        if !status.is_success() {
+            error!("{:?}", res.text().await);
+            bail!("SMS 2FA request failed with status: {}", status.as_str());
+        }
 
         info!("SMS 2FA request sent");
-
-        let response = two_factor_callback(TwoFactorCallbackParams {
-            sms: true,
-            numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
-            selected_number_id: Some(id),
-        });
-        if let Some(code) = response.code {
-            let body = serde_json::json!({
-                "securityCode": {
-                    "code": code
-                },
-                "phoneNumber": {
-                    "id": id
-                },
-                "mode": "sms"
-            });
-
-            let res = self
-                .grandslam_client
-                .post_sms("https://gsa.apple.com/auth/verify/phone/securitycode")?
-                .headers(self.build_2fa_headers(&anisette_data).await?)
-                .body(body.to_string())
-                .send()
-                .await
-                .context("Failed to submit SMS 2FA code")?;
-
-            if !res.status().is_success() {
-                let status = res.status();
-                let text = res
-                    .text()
-                    .await
-                    .context("Failed to read SMS 2FA error response text")?;
-                // try to parse as json, if it fails, just bail with the text
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
-                    && let Some(service_errors) = json.get("serviceErrors")
-                    && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
-                {
-                    let code = first_error
-                        .get("code")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("unknown");
-                    let title = first_error
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("No title provided");
-                    let message = first_error
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("No message provided");
-                    bail!(
-                        "SMS 2FA code submission failed (code {}): {} - {}",
-                        code,
-                        title,
-                        message
-                    );
-                }
-                bail!(
-                    "SMS 2FA code submission failed with http status {}: {}",
-                    status,
-                    text
-                );
-            };
-
-            debug!("SMS 2FA completed, need to login again");
-            self.login_state = LoginState::NeedsLogin;
-        } else if let Some(selected_number_id) = response.selected_number_id {
-            self.login_state = self.select_number(selected_number_id)?;
-        } else {
-            bail!("No 2FA code provided, aborting");
-        }
 
         Ok(())
     }
 
-    pub async fn get_trusted_numbers(&mut self) -> Result<Vec<TrustedNumber>, Report> {
+    async fn verify_sms_2fa(&mut self, code: String, id: u32) -> Result<LoginState, Report> {
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for 2FA")?;
+
+        let body = serde_json::json!({
+            "securityCode": {
+                "code": code
+            },
+            "phoneNumber": {
+                "id": id
+            },
+            "mode": "sms"
+        });
+
+        let res = self
+            .grandslam_client
+            .post_sms("https://gsa.apple.com/auth/verify/phone/securitycode")?
+            .headers(self.build_2fa_headers(&anisette_data).await?)
+            .body(body.to_string())
+            .send()
+            .await
+            .context("Failed to submit SMS 2FA code")?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res
+                .text()
+                .await
+                .context("Failed to read SMS 2FA error response text")?;
+            // try to parse as json, if it fails, just bail with the text
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
+                && let Some(service_errors) = json.get("serviceErrors")
+                && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
+            {
+                let code = first_error
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("unknown");
+                let title = first_error
+                    .get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("No title provided");
+                let message = first_error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("No message provided");
+
+                if code == "-21669" {
+                    info!(message);
+                    return Ok(LoginState::NeedsSMS2FAVerification(id));
+                }
+
+                bail!(
+                    "SMS 2FA code submission failed (code {}): {} - {}",
+                    code,
+                    title,
+                    message
+                );
+            }
+            bail!(
+                "SMS 2FA code submission failed with http status {}: {}",
+                status,
+                text
+            );
+        };
+
+        debug!("SMS 2FA completed, need to login again");
+        Ok(LoginState::NeedsLogin)
+    }
+
+    async fn get_trusted_numbers(&mut self) -> Result<Vec<TrustedNumber>, Report> {
         let anisette_data = self
             .anisette_generator
             .get_anisette_data(self.grandslam_client.clone())
