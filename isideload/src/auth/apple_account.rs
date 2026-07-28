@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    SideloadError,
     anisette::{AnisetteData, AnisetteDataGenerator},
     auth::{
         builder::AppleAccountBuilder,
@@ -183,10 +184,10 @@ impl AppleAccount {
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
-                            self.verify_trusted_device_2fa(code)
+                            self.login_state = self
+                                .verify_trusted_device_2fa(code)
                                 .await
                                 .context("Failed to verify trusted device 2FA")?;
-                            self.login_state = LoginState::NeedsLogin;
                         }
                         TwoFactorCallbackResponse::SendSms(selected_number_id) => {
                             self.login_state = self.select_number(selected_number_id)?;
@@ -328,7 +329,7 @@ impl AppleAccount {
         Ok(())
     }
 
-    async fn verify_trusted_device_2fa(&mut self, code: String) -> Result<(), Report> {
+    async fn verify_trusted_device_2fa(&mut self, code: String) -> Result<LoginState, Report> {
         let anisette_data = self
             .anisette_generator
             .get_anisette_data(self.grandslam_client.clone())
@@ -354,13 +355,31 @@ impl AppleAccount {
         let plist: Dictionary = plist::from_bytes(res.as_bytes())
             .context("Failed to parse trusted device response plist")
             .attach_with(|| res.clone())?;
-        plist
+        let res = plist
             .check_grandslam_error()
-            .context("Trusted device 2FA rejected")?;
+            .context("Trusted device 2FA rejected");
+        if let Err(ref report) = res {
+            for cause in report.iter_reports() {
+                if let Some(err) = cause.downcast_current_context::<SideloadError>() {
+                    match err {
+                        &SideloadError::AuthWithMessage(code, ref message) => match code {
+                            // Incorrect Verification Code, let the user try again
+                            -21669 => {
+                                warn!("{} - {}", code, message);
+                                return Ok(LoginState::NeedsDevice2FAVerification);
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        }
+        res?;
 
         debug!("Trusted device 2FA completed, need to login again");
 
-        Ok(())
+        Ok(LoginState::NeedsLogin)
     }
 
     async fn send_sms_2fa(&mut self, id: u32) -> Result<LoginState, Report> {
@@ -414,7 +433,7 @@ impl AppleAccount {
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
-            if error.code == "-28248" {
+            if error.code == "-22979" {
                 // Too many verification codes have been sent. - Enter the last code you received or try again later.
                 warn!("{} - {}", error.title, error.message);
                 return Ok(LoginState::NeedsUnknown2FA);
