@@ -1,16 +1,14 @@
-use std::{env, path::PathBuf};
-
-use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
-    auth::apple_account::AppleAccount,
+    auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
     dev::{
         certificates::DevelopmentCertificate, developer_session::DeveloperSession,
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::keyring_storage::KeyringStorage,
+    util::{keyring_storage::KeyringStorage, storage::InMemoryStorage},
 };
+use std::env;
 
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -29,25 +27,67 @@ async fn main() {
         .get(1)
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(2).expect("Please provide the Apple ID password");
-    let app_path = PathBuf::from(
-        args.get(3)
-            .expect("Please provide the path to the app to install"),
-    );
+    // let app_path = PathBuf::from(
+    //     args.get(3)
+    //         .expect("Please provide the path to the app to install"),
+    // );
 
-    let get_2fa_code = || {
+    let get_2fa_code = |params: TwoFactorCallbackParams| {
         let mut code = String::new();
-        println!("Enter 2FA code:");
+        println!(
+            "Enter the 2FA code sent to {}:",
+            if params.sms {
+                params
+                    .numbers
+                    .iter()
+                    .find(|n| n.id == params.selected_number_id.unwrap())
+                    .unwrap()
+                    .number_with_dial_code
+                    .clone()
+            } else {
+                "your devices".to_string()
+            }
+        );
+
+        // step 1: filter the trusted numbers to only those that aren't the selected number
+        let other_numbers: Vec<_> = params
+            .numbers
+            .iter()
+            .filter(|n| Some(n.id) != params.selected_number_id)
+            .collect();
+        if !other_numbers.is_empty() {
+            println!(
+                "Or, select one of these numbers to receive the code instead. (Type \"p<id>\" to select, e.g. \"p1\"):"
+            );
+            for (_, n) in other_numbers.iter().enumerate() {
+                println!("ID {}: {}", n.id, n.number_with_dial_code);
+            }
+        }
+
         std::io::stdin().read_line(&mut code).unwrap();
-        Some(code.trim().to_string())
+
+        if code.trim().starts_with('p') {
+            let selected_id = code.trim()[1..].parse::<u32>().unwrap();
+            return TwoFactorCallbackResponse {
+                code: None,
+                selected_number_id: Some(selected_id),
+            };
+        }
+
+        TwoFactorCallbackResponse {
+            code: Some(code.trim().to_string()),
+            selected_number_id: None,
+        }
     };
 
     let account = AppleAccount::builder(apple_id)
         .anisette_provider(
             RemoteV3AnisetteProvider::default()
                 .unwrap()
-                .set_serial_number("2".to_string()),
+                .set_serial_number("2".to_string())
+                .set_storage(Box::new(InMemoryStorage::new())),
         )
-        .login(apple_password, get_2fa_code)
+        .login(apple_password, Box::new(get_2fa_code))
         .await;
 
     let mut account = account.unwrap();
@@ -56,21 +96,21 @@ async fn main() {
         .await
         .expect("Failed to create developer session");
 
-    let usbmuxd = UsbmuxdConnection::default().await;
-    if usbmuxd.is_err() {
-        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
-    }
-    let mut usbmuxd = usbmuxd.unwrap();
+    // let usbmuxd = UsbmuxdConnection::default().await;
+    // if usbmuxd.is_err() {
+    //     panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
+    // }
+    // let mut usbmuxd = usbmuxd.unwrap();
 
-    let devs = usbmuxd.get_devices().await.unwrap();
-    if devs.is_empty() {
-        panic!("No devices found");
-    }
+    // let devs = usbmuxd.get_devices().await.unwrap();
+    // if devs.is_empty() {
+    //     panic!("No devices found");
+    // }
 
-    let provider = devs
-        .first()
-        .unwrap()
-        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
+    // let provider = devs
+    //     .first()
+    //     .unwrap()
+    //     .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
 
     let team_selection_prompt = |teams: &Vec<DeveloperTeam>| {
         println!("Please select a team:");
@@ -121,16 +161,16 @@ async fn main() {
         )
     };
 
-    let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
+    let _ = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
         .max_certs_behavior(MaxCertsBehavior::Prompt(Box::new(cert_selection_prompt)))
         .storage(Box::new(KeyringStorage::new("minimal".to_string())))
         .machine_name("isideload-minimal".to_string())
         .build();
 
-    let result = sideloader.install_app(&provider, app_path, true).await;
-    match result {
-        Ok(_) => println!("App installed successfully"),
-        Err(e) => panic!("{}", e),
-    }
+    // let result = sideloader.install_app(&provider, app_path, true).await;
+    // match result {
+    //     Ok(_) => println!("App installed successfully"),
+    //     Err(e) => panic!("{}", e),
+    // }
 }
