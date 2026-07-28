@@ -61,13 +61,11 @@ async fn main() {
             .iter()
             .filter(|n| Some(n.id) != params.selected_number_id)
             .collect();
-
-        if params.sms {
-            if params.unknown {
-                println!("Enter \"d\" to have the code sent to your devices.");
-            } else {
-                println!("Or, enter \"d\" to have the code sent to your devices instead.");
-            }
+        if params.unknown {
+            println!("Enter \"d\" to have the code sent to your devices.");
+        }
+        if params.sms && !params.unknown {
+            println!("Or, enter \"d\" to have the code sent to your devices instead.");
         }
 
         if !other_numbers.is_empty() {
