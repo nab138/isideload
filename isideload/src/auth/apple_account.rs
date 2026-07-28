@@ -383,8 +383,6 @@ impl AppleAccount {
     }
 
     async fn send_sms_2fa(&mut self, id: u32) -> Result<LoginState, Report> {
-        debug!("SMS 2FA required");
-
         let anisette_data = self
             .anisette_generator
             .get_anisette_data(self.grandslam_client.clone())
@@ -759,6 +757,7 @@ impl AppleAccount {
             .context("Failed to parse proof login response")?;
 
         debug!("Login step 2 completed");
+        debug!("Login status: {:?}", status);
 
         if let Some(plist::Value::String(s)) = status.get("au") {
             return Ok(match s.as_str() {
