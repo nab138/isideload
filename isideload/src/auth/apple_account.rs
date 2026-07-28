@@ -421,7 +421,7 @@ impl AppleAccount {
             }
 
             bail!(
-                "SMS 2FA code submission failed (code {}): {} - {}",
+                "SMS 2FA request failed (code {}): {} - {}",
                 error.code,
                 error.title,
                 error.message
