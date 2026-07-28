@@ -61,6 +61,7 @@ async fn main() {
             .iter()
             .filter(|n| Some(n.id) != params.selected_number_id)
             .collect();
+
         if params.unknown {
             println!("Enter \"d\" to have the code sent to your devices.");
         }

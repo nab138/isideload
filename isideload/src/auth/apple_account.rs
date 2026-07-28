@@ -478,12 +478,13 @@ impl AppleAccount {
             .await
             .context("Failed to submit SMS 2FA code")?;
 
-        if !res.status().is_success() {
-            let status = res.status();
-            let text = res
-                .text()
-                .await
-                .context("Failed to read SMS 2FA error response text")?;
+        let status = res.status();
+        let text = res
+            .text()
+            .await
+            .context("Failed to read SMS 2FA error response text")?;
+        debug!("{}", text);
+        if !status.is_success() {
             // try to parse as json, if it fails, just bail with the text
             let error = Self::parse_sms_error(text, status.as_u16())?;
 
