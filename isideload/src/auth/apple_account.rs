@@ -488,7 +488,6 @@ impl AppleAccount {
             .text()
             .await
             .context("Failed to read SMS 2FA error response text")?;
-        debug!("{}", text);
         if !status.is_success() {
             // try to parse as json, if it fails, just bail with the text
             let error = Self::parse_sms_error(text, status.as_u16())?;
@@ -757,7 +756,6 @@ impl AppleAccount {
             .context("Failed to parse proof login response")?;
 
         debug!("Login step 2 completed");
-        debug!("Login status: {:?}", status);
 
         if let Some(plist::Value::String(s)) = status.get("au") {
             return Ok(match s.as_str() {
