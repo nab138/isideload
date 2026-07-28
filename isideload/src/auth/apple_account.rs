@@ -23,7 +23,7 @@ use rootcause::prelude::*;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use srp::{ClientVerifier, groups::G2048};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 pub struct AppleAccount {
     pub email: String,
@@ -42,6 +42,7 @@ pub enum LoginState {
     NeedsDevice2FAVerification,
     NeedsSMS2FA(u32),
     NeedsSMS2FAVerification(u32),
+    NeedsUnknown2FA,
     NeedsExtraStep(String),
     NeedsLogin,
 }
@@ -57,6 +58,8 @@ pub struct TrustedNumber {
 
 #[derive(Debug, Clone)]
 pub struct TwoFactorCallbackParams {
+    // If this is true, we don't know what's going to work, so present the user with all the options and let them choose
+    pub unknown: bool,
     pub sms: bool,
     pub numbers: Vec<TrustedNumber>,
     pub selected_number_id: Option<u32>,
@@ -68,6 +71,13 @@ pub enum TwoFactorCallbackResponse {
     SendSms(u32),
     SendToDevices,
     ResendCode,
+}
+
+#[derive(Debug, Clone)]
+pub struct SMSTwoFactorError {
+    pub code: String,
+    pub title: String,
+    pub message: String,
 }
 
 pub type TwoFactorCallback =
@@ -165,6 +175,7 @@ impl AppleAccount {
                 }
                 LoginState::NeedsDevice2FAVerification => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
+                        unknown: false,
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
@@ -191,13 +202,14 @@ impl AppleAccount {
                         self.trusted_phone_numbers = Some(self.get_trusted_numbers().await?);
                     }
                     info!("SMS 2FA required");
-                    self.send_sms_2fa(id)
+                    self.login_state = self
+                        .send_sms_2fa(id)
                         .await
                         .context("Failed to complete SMS 2FA")?;
-                    self.login_state = LoginState::NeedsSMS2FAVerification(id);
                 }
                 LoginState::NeedsSMS2FAVerification(id) => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
+                        unknown: false,
                         sms: true,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: Some(id),
@@ -205,10 +217,10 @@ impl AppleAccount {
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
-                            self.verify_sms_2fa(code, id)
+                            self.login_state = self
+                                .verify_sms_2fa(code, id)
                                 .await
                                 .context("Failed to verify trusted device 2FA")?;
-                            self.login_state = LoginState::NeedsLogin;
                         }
                         TwoFactorCallbackResponse::SendSms(selected_number_id) => {
                             self.login_state = self.select_number(selected_number_id)?;
@@ -234,6 +246,32 @@ impl AppleAccount {
                         .login_inner(password)
                         .await
                         .context("Failed to login again")?;
+                }
+                LoginState::NeedsUnknown2FA => {
+                    info!(
+                        "The most recently attempted 2FA Method failed, please try a different method."
+                    );
+                    let response = two_factor_callback(TwoFactorCallbackParams {
+                        unknown: true,
+                        sms: false,
+                        numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
+                        selected_number_id: None,
+                    });
+
+                    match response {
+                        TwoFactorCallbackResponse::SubmitCode(_) => {
+                            bail!("Cannot submit code without knowing which method to use");
+                        }
+                        TwoFactorCallbackResponse::SendSms(selected_number_id) => {
+                            self.login_state = self.select_number(selected_number_id)?;
+                        }
+                        TwoFactorCallbackResponse::SendToDevices => {
+                            self.login_state = LoginState::NeedsDevice2FA;
+                        }
+                        TwoFactorCallbackResponse::ResendCode => {
+                            bail!("Cannot resend code without knowing which method to use");
+                        }
+                    }
                 }
             }
         }
@@ -325,7 +363,7 @@ impl AppleAccount {
         Ok(())
     }
 
-    async fn send_sms_2fa(&mut self, id: u32) -> Result<(), Report> {
+    async fn send_sms_2fa(&mut self, id: u32) -> Result<LoginState, Report> {
         debug!("SMS 2FA required");
 
         let anisette_data = self
@@ -361,15 +399,38 @@ impl AppleAccount {
             .await
             .context("Failed to request SMS 2FA")?;
 
-        let status = res.status();
-        if !status.is_success() {
-            error!("{:?}", res.text().await);
-            bail!("SMS 2FA request failed with status: {}", status.as_str());
-        }
+        if !res.status().is_success() {
+            let status = res.status();
+            let text = res
+                .text()
+                .await
+                .context("Failed to read SMS 2FA error response text")?;
+            // try to parse as json, if it fails, just bail with the text
+            let error = Self::parse_sms_error(text, status.as_u16())?;
+
+            if error.code == "-28248" {
+                // Verification codes can’t be sent to this phone number at this time. Please try again later.
+                warn!("{} - {}", error.title, error.message);
+                return Ok(LoginState::NeedsUnknown2FA);
+            }
+
+            if error.code == "-28248" {
+                // Too many verification codes have been sent. - Enter the last code you received or try again later.
+                warn!("{} - {}", error.title, error.message);
+                return Ok(LoginState::NeedsUnknown2FA);
+            }
+
+            bail!(
+                "SMS 2FA code submission failed (code {}): {} - {}",
+                error.code,
+                error.title,
+                error.message
+            );
+        };
 
         info!("SMS 2FA request sent");
 
-        Ok(())
+        Ok(LoginState::NeedsSMS2FAVerification(id))
     }
 
     async fn verify_sms_2fa(&mut self, code: String, id: u32) -> Result<LoginState, Report> {
@@ -405,44 +466,55 @@ impl AppleAccount {
                 .await
                 .context("Failed to read SMS 2FA error response text")?;
             // try to parse as json, if it fails, just bail with the text
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
-                && let Some(service_errors) = json.get("serviceErrors")
-                && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
-            {
-                let code = first_error
-                    .get("code")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("unknown");
-                let title = first_error
-                    .get("title")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("No title provided");
-                let message = first_error
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("No message provided");
+            let error = Self::parse_sms_error(text, status.as_u16())?;
 
-                if code == "-21669" {
-                    info!(message);
-                    return Ok(LoginState::NeedsSMS2FAVerification(id));
-                }
-
-                bail!(
-                    "SMS 2FA code submission failed (code {}): {} - {}",
-                    code,
-                    title,
-                    message
-                );
+            if error.code == "-21669" {
+                // Incorrect Verification Code, let the user try again
+                warn!("{} - {}", error.title, error.message);
+                return Ok(LoginState::NeedsSMS2FAVerification(id));
             }
+
             bail!(
-                "SMS 2FA code submission failed with http status {}: {}",
-                status,
-                text
+                "SMS 2FA code submission failed (code {}): {} - {}",
+                error.code,
+                error.title,
+                error.message
             );
         };
 
         debug!("SMS 2FA completed, need to login again");
         Ok(LoginState::NeedsLogin)
+    }
+
+    fn parse_sms_error(text: String, status: u16) -> Result<SMSTwoFactorError, Report> {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(service_errors) = json.get("serviceErrors")
+            && let Some(first_error) = service_errors.as_array().and_then(|arr| arr.first())
+        {
+            let code = first_error
+                .get("code")
+                .and_then(|c| c.as_str())
+                .unwrap_or("unknown");
+            let title = first_error
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("No title provided");
+            let message = first_error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("No message provided");
+
+            return Ok(SMSTwoFactorError {
+                code: code.to_string(),
+                title: title.to_string(),
+                message: message.to_string(),
+            });
+        }
+        bail!(
+            "SMS 2FA code submission failed with http status {}: {}",
+            status,
+            text
+        );
     }
 
     async fn get_trusted_numbers(&mut self) -> Result<Vec<TrustedNumber>, Report> {

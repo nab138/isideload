@@ -29,32 +29,47 @@ async fn main() {
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(2).expect("Please provide the Apple ID password");
     let app_path = PathBuf::from(
-        args.get(3)
-            .expect("Please provide the path to the app to install"),
+        args.get(3).unwrap_or(&"".to_string()), // .expect("Please provide the path to the app to install"),
     );
 
     let get_2fa_code = |params: TwoFactorCallbackParams| {
         let mut code = String::new();
-        println!(
-            "Enter the 2FA code sent to {}:",
-            if params.sms {
-                params
-                    .numbers
-                    .iter()
-                    .find(|n| n.id == params.selected_number_id.unwrap())
-                    .unwrap()
-                    .number_with_dial_code
-                    .clone()
-            } else {
-                "your devices".to_string()
-            }
-        );
+
+        if params.unknown {
+            println!(
+                "The most recently attempted 2FA Method failed, please try a different method."
+            );
+        } else {
+            println!(
+                "Enter the 2FA code sent to {}:",
+                if params.sms {
+                    params
+                        .numbers
+                        .iter()
+                        .find(|n| n.id == params.selected_number_id.unwrap())
+                        .unwrap()
+                        .number_with_dial_code
+                        .clone()
+                } else {
+                    "your devices".to_string()
+                }
+            );
+        }
 
         let other_numbers: Vec<_> = params
             .numbers
             .iter()
             .filter(|n| Some(n.id) != params.selected_number_id)
             .collect();
+
+        if params.sms {
+            if params.unknown {
+                println!("Enter \"d\" to have the code sent to your devices.");
+            } else {
+                println!("Or, enter \"d\" to have the code sent to your devices instead.");
+            }
+        }
+
         if !other_numbers.is_empty() {
             println!(
                 "Or, select one of these numbers to receive the code instead. (Type \"p<id>\" to select, e.g. \"p1\"):"
@@ -64,11 +79,9 @@ async fn main() {
             }
         }
 
-        if params.sms {
-            println!("Or, enter \"d\" to have the code sent to your devices instead.");
+        if !params.unknown {
+            println!("Enter \"r\" to resend the code.");
         }
-
-        println!("Enter \"r\" to resend the code.");
 
         std::io::stdin().read_line(&mut code).unwrap();
 
@@ -81,7 +94,7 @@ async fn main() {
             return TwoFactorCallbackResponse::SendToDevices;
         }
 
-        if code.trim() == "r" {
+        if code.trim() == "r" && !params.unknown {
             return TwoFactorCallbackResponse::ResendCode;
         }
 
