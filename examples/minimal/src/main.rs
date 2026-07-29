@@ -7,7 +7,7 @@ use isideload::{
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::{keyring_storage::KeyringStorage, storage::InMemoryStorage},
+    util::keyring_storage::KeyringStorage,
 };
 use std::{env, path::PathBuf};
 
@@ -21,7 +21,7 @@ async fn main() {
         .expect("Failed to install rustls crypto provider");
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -107,8 +107,7 @@ async fn main() {
         .anisette_provider(
             RemoteV3AnisetteProvider::default()
                 .unwrap()
-                .set_serial_number("2".to_string())
-                .set_storage(Box::new(InMemoryStorage::new())),
+                .set_serial_number("2".to_string()),
         )
         .login(apple_password, get_2fa_code)
         .await;
