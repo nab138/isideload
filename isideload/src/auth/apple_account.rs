@@ -140,7 +140,7 @@ impl AppleAccount {
     ) -> Result<(), Report>
     where
         C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = TwoFactorCallbackResponse> + Send,
+        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
     {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
@@ -185,7 +185,7 @@ impl AppleAccount {
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
                     })
-                    .await;
+                    .await?;
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
@@ -223,8 +223,7 @@ impl AppleAccount {
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: Some(id),
                     })
-                    .await;
-
+                    .await?;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
                             self.login_state = self
@@ -270,7 +269,7 @@ impl AppleAccount {
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
                     })
-                    .await;
+                    .await?;
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(_) => {

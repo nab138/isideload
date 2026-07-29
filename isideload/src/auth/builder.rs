@@ -84,7 +84,7 @@ impl AppleAccountBuilder {
     ) -> Result<AppleAccount, Report>
     where
         C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: std::future::Future<Output = TwoFactorCallbackResponse> + Send,
+        Fut: std::future::Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
     {
         let mut account = self.build().await?;
         account.login(password, two_factor_callback).await?;

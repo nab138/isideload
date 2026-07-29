@@ -89,18 +89,20 @@ async fn main() {
 
         if code.trim().starts_with('p') {
             let selected_id = code.trim()[1..].parse::<u32>().unwrap();
-            return TwoFactorCallbackResponse::SendSms(selected_id);
+            return Ok(TwoFactorCallbackResponse::SendSms(selected_id));
         }
 
         if code.trim() == "d" {
-            return TwoFactorCallbackResponse::SendToDevices;
+            return Ok(TwoFactorCallbackResponse::SendToDevices);
         }
 
         if code.trim() == "r" && !params.unknown {
-            return TwoFactorCallbackResponse::ResendCode;
+            return Ok(TwoFactorCallbackResponse::ResendCode);
         }
 
-        TwoFactorCallbackResponse::SubmitCode(code.trim().to_string())
+        Ok(TwoFactorCallbackResponse::SubmitCode(
+            code.trim().to_string(),
+        ))
     };
 
     let account = AppleAccount::builder(apple_id)
