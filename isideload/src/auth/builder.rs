@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     anisette::{AnisetteDataGenerator, AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
-    auth::apple_account::{AppleAccount, TwoFactorCallback},
+    auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
 };
 
 pub struct AppleAccountBuilder {
@@ -77,11 +77,15 @@ impl AppleAccountBuilder {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
-    pub async fn login(
+    pub async fn login<C, Fut>(
         self,
         password: &str,
-        two_factor_callback: TwoFactorCallback,
-    ) -> Result<AppleAccount, Report> {
+        two_factor_callback: C,
+    ) -> Result<AppleAccount, Report>
+    where
+        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
+        Fut: std::future::Future<Output = TwoFactorCallbackResponse> + Send,
+    {
         let mut account = self.build().await?;
         account.login(password, two_factor_callback).await?;
         Ok(account)

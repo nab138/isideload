@@ -35,7 +35,7 @@ async fn main() {
         args.get(3).unwrap_or(&"".to_string()), // .expect("Please provide the path to the app to install"),
     );
 
-    let get_2fa_code = |params: TwoFactorCallbackParams| {
+    let get_2fa_code = async |params: TwoFactorCallbackParams| {
         let mut code = String::new();
 
         if params.unknown {
@@ -110,7 +110,7 @@ async fn main() {
                 .set_serial_number("2".to_string())
                 .set_storage(Box::new(InMemoryStorage::new())),
         )
-        .login(apple_password, Box::new(get_2fa_code))
+        .login(apple_password, get_2fa_code)
         .await;
 
     let mut account = account.unwrap();

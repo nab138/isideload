@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use crate::{
     SideloadError,
@@ -83,9 +83,6 @@ pub struct SMSTwoFactorError {
     pub message: String,
 }
 
-pub type TwoFactorCallback =
-    Box<dyn Fn(TwoFactorCallbackParams) -> TwoFactorCallbackResponse + Send + Sync>;
-
 impl AppleAccount {
     /// Create a new AppleAccountBuilder with the given email
     ///
@@ -136,11 +133,15 @@ impl AppleAccount {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the login fails
-    pub async fn login<F, Fut>(
+    pub async fn login<C, Fut>(
         &mut self,
         password: &str,
-        two_factor_callback: TwoFactorCallback,
-    ) -> Result<(), Report> {
+        two_factor_callback: C,
+    ) -> Result<(), Report>
+    where
+        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
+        Fut: Future<Output = TwoFactorCallbackResponse> + Send,
+    {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -183,7 +184,8 @@ impl AppleAccount {
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
-                    });
+                    })
+                    .await;
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
@@ -220,7 +222,8 @@ impl AppleAccount {
                         sms: true,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: Some(id),
-                    });
+                    })
+                    .await;
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
@@ -266,7 +269,8 @@ impl AppleAccount {
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
-                    });
+                    })
+                    .await;
 
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(_) => {
