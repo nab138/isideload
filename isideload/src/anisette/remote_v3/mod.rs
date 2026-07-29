@@ -30,7 +30,6 @@ pub struct RemoteV3AnisetteProvider {
     url: String,
     storage: Box<dyn SideloadingStorage>,
     serial_number: String,
-    client_info: Option<AnisetteClientInfo>,
     client: reqwest_middleware::ClientWithMiddleware,
     websocket_proxy: Option<String>,
 }
@@ -52,7 +51,6 @@ impl RemoteV3AnisetteProvider {
             url: url.to_string(),
             storage,
             serial_number,
-            client_info: None,
             client: Self::build_reqwest_client(None)?,
             websocket_proxy: None,
         })
@@ -118,10 +116,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
             .adi_pb
             .as_ref()
             .ok_or(SideloadError::AnisetteNotProvisioned)?;
-        let client_info = self
-            .client_info
-            .as_ref()
-            .ok_or(SideloadError::AnisetteNotProvisioned)?;
+        let client_info = self.get_client_info().await?;
 
         let headers = self
             .client
@@ -164,28 +159,16 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
         }
     }
 
-    async fn get_client_info(&mut self) -> Result<AnisetteClientInfo, Report> {
-        match self.client_info {
-            Some(ref info) => Ok(info.clone()),
-            None => {
-                let resp = self
-                    .client
-                    .get(format!("{}/v3/client_info", self.url))
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<AnisetteClientInfo>()
-                    .await?;
-
-                self.client_info = Some(resp.clone());
-                Ok(resp)
-            }
-        }
+    async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
+        Ok(AnisetteClientInfo {
+            client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.dt.Xcode/25183.54.10)>".to_string(),
+            user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
+        })
     }
 
     fn needs_provisioning(&self) -> Result<bool, Report> {
         if let Some(state) = &self.state {
-            Ok(!state.is_provisioned() || self.client_info.is_none())
+            Ok(!state.is_provisioned())
         } else {
             Ok(true)
         }

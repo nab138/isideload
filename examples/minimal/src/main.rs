@@ -1,16 +1,15 @@
-use std::{env, path::PathBuf};
-
 use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
-    auth::apple_account::AppleAccount,
+    auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
     dev::{
         certificates::DevelopmentCertificate, developer_session::DeveloperSession,
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::keyring_storage::KeyringStorage,
+    util::{keyring_storage::KeyringStorage, storage::InMemoryStorage},
 };
+use std::{env, path::PathBuf};
 
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -22,7 +21,7 @@ async fn main() {
         .expect("Failed to install rustls crypto provider");
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -33,24 +32,85 @@ async fn main() {
         .expect("Please provide the Apple ID to use for installation");
     let apple_password = args.get(2).expect("Please provide the Apple ID password");
     let app_path = PathBuf::from(
-        args.get(3)
-            .expect("Please provide the path to the app to install"),
+        args.get(3).unwrap_or(&"".to_string()), // .expect("Please provide the path to the app to install"),
     );
 
-    let get_2fa_code = async || {
+    let get_2fa_code = |params: TwoFactorCallbackParams| {
         let mut code = String::new();
-        println!("Enter 2FA code:");
+
+        if params.unknown {
+            println!(
+                "The most recently attempted 2FA Method failed, please try a different method."
+            );
+        } else {
+            println!(
+                "Enter the 2FA code sent to {}:",
+                if params.sms {
+                    params
+                        .numbers
+                        .iter()
+                        .find(|n| n.id == params.selected_number_id.unwrap())
+                        .unwrap()
+                        .number_with_dial_code
+                        .clone()
+                } else {
+                    "your devices".to_string()
+                }
+            );
+        }
+
+        let other_numbers: Vec<_> = params
+            .numbers
+            .iter()
+            .filter(|n| Some(n.id) != params.selected_number_id)
+            .collect();
+
+        if params.unknown {
+            println!("Enter \"d\" to have the code sent to your devices.");
+        }
+        if params.sms && !params.unknown {
+            println!("Or, enter \"d\" to have the code sent to your devices instead.");
+        }
+
+        if !other_numbers.is_empty() {
+            println!(
+                "Or, select one of these numbers to receive the code instead. (Type \"p<id>\" to select, e.g. \"p1\"):"
+            );
+            for (_, n) in other_numbers.iter().enumerate() {
+                println!("ID {}: {}", n.id, n.number_with_dial_code);
+            }
+        }
+
+        if !params.unknown {
+            println!("Enter \"r\" to resend the code.");
+        }
+
         std::io::stdin().read_line(&mut code).unwrap();
-        Some(code.trim().to_string())
+
+        if code.trim().starts_with('p') {
+            let selected_id = code.trim()[1..].parse::<u32>().unwrap();
+            return TwoFactorCallbackResponse::SendSms(selected_id);
+        }
+
+        if code.trim() == "d" {
+            return TwoFactorCallbackResponse::SendToDevices;
+        }
+
+        if code.trim() == "r" && !params.unknown {
+            return TwoFactorCallbackResponse::ResendCode;
+        }
+
+        TwoFactorCallbackResponse::SubmitCode(code.trim().to_string())
     };
 
     let account = AppleAccount::builder(apple_id)
         .anisette_provider(
             RemoteV3AnisetteProvider::default()
                 .unwrap()
-                .set_serial_number("2".to_string()),
+                .set_serial_number("2".to_string())
+                .set_storage(Box::new(InMemoryStorage::new())),
         )
-        .login(apple_password, get_2fa_code)
+        .login(apple_password, Box::new(get_2fa_code))
         .await;
 
     let mut account = account.unwrap();
