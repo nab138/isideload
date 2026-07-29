@@ -106,6 +106,15 @@ impl GrandSlam {
         Ok(builder)
     }
 
+    pub fn post_sms(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
+        let builder = self
+            .client
+            .post(url)
+            .headers(Self::base_headers(&self.client_info, true)?);
+
+        Ok(builder)
+    }
+
     pub fn patch(&self, url: &str) -> Result<reqwest::RequestBuilder, Report> {
         let builder = self
             .client
@@ -170,7 +179,10 @@ impl GrandSlam {
             "User-Agent",
             HeaderValue::from_str(&client_info.user_agent)?,
         );
-        headers.insert("X-Xcode-Version", HeaderValue::from_static("14.2 (14C18)"));
+        headers.insert(
+            "X-Xcode-Version",
+            HeaderValue::from_static("27.0 (27A5218g)"),
+        );
         headers.insert(
             "X-Apple-App-Info",
             HeaderValue::from_static("com.apple.gs.xcode.auth"),
