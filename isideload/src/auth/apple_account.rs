@@ -21,7 +21,7 @@ use plist::Dictionary;
 use plist_macro::plist;
 use reqwest::header::{HeaderMap, HeaderValue};
 use rootcause::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use srp::{ClientVerifier, groups::G2048};
 use tracing::{debug, info, warn};
@@ -57,7 +57,8 @@ pub struct TrustedNumber {
     pub id: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TwoFactorCallbackParams {
     // If this is true, we don't know what's going to work, so present the user with all the options and let them choose
     pub unknown: bool,
