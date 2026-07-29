@@ -73,6 +73,7 @@ pub enum TwoFactorCallbackResponse {
     SendSms(u32),
     SendToDevices,
     ResendCode,
+    Abort,
 }
 
 #[derive(Debug, Clone)]
@@ -197,6 +198,9 @@ impl AppleAccount {
                         | TwoFactorCallbackResponse::ResendCode => {
                             self.login_state = LoginState::NeedsDevice2FA;
                         }
+                        TwoFactorCallbackResponse::Abort => {
+                            bail!("No 2FA code provided, aborting")
+                        }
                     }
                 }
                 LoginState::NeedsSMS2FA(id) => {
@@ -232,6 +236,9 @@ impl AppleAccount {
                         }
                         TwoFactorCallbackResponse::SendToDevices => {
                             self.login_state = LoginState::NeedsDevice2FA;
+                        }
+                        TwoFactorCallbackResponse::Abort => {
+                            bail!("No 2FA code provided, aborting")
                         }
                     }
                 }
@@ -272,6 +279,9 @@ impl AppleAccount {
                         }
                         TwoFactorCallbackResponse::ResendCode => {
                             bail!("Cannot resend code without knowing which method to use");
+                        }
+                        TwoFactorCallbackResponse::Abort => {
+                            bail!("No 2FA method selected, aborting");
                         }
                     }
                 }
