@@ -67,7 +67,7 @@ pub struct TwoFactorCallbackParams {
     pub selected_number_id: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TwoFactorCallbackResponse {
     SubmitCode(String),
     SendSms(u32),
