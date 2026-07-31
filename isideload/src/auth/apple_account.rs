@@ -34,6 +34,7 @@ pub struct AppleAccount {
     pub trusted_phone_numbers: Option<Vec<TrustedNumber>>,
     login_state: LoginState,
     debug: bool,
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +61,7 @@ pub struct TrustedNumber {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TwoFactorCallbackParams {
+    pub last_error: Option<String>,
     // If this is true, we don't know what's going to work, so present the user with all the options and let them choose
     pub unknown: bool,
     pub sms: bool,
@@ -124,6 +126,7 @@ impl AppleAccount {
             debug,
             login_state: LoginState::NeedsLogin,
             trusted_phone_numbers: None,
+            last_error: None,
         })
     }
 
@@ -206,6 +209,7 @@ impl AppleAccount {
                 }
                 LoginState::NeedsDevice2FAVerification => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
+                        last_error: self.last_error.clone(),
                         unknown: false,
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
@@ -245,6 +249,7 @@ impl AppleAccount {
                 LoginState::NeedsSMS2FAVerification(id) => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
                         unknown: false,
+                        last_error: self.last_error.clone(),
                         sms: true,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: Some(id),
@@ -291,6 +296,7 @@ impl AppleAccount {
                     );
                     let response = two_factor_callback(TwoFactorCallbackParams {
                         unknown: true,
+                        last_error: self.last_error.clone(),
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
@@ -407,6 +413,8 @@ impl AppleAccount {
                             // Incorrect Verification Code, let the user try again
                             -21669 => {
                                 warn!("{} - {}", code, message);
+                                self.last_error = format!("{} - {}", code, message).into();
+
                                 return Ok(LoginState::NeedsDevice2FAVerification);
                             }
                             _ => {}
@@ -469,12 +477,14 @@ impl AppleAccount {
             if error.code == "-28248" {
                 // Verification codes can’t be sent to this phone number at this time. Please try again later.
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
             if error.code == "-22979" {
                 // Too many verification codes have been sent. - Enter the last code you received or try again later.
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
@@ -482,6 +492,7 @@ impl AppleAccount {
                 // Too many verification codes have been sent. - Enter the last code you received or try again later.
                 // Not sure why there are two identical errors with different codes
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
@@ -536,6 +547,7 @@ impl AppleAccount {
             if error.code == "-21669" {
                 // Incorrect Verification Code, let the user try again
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsSMS2FAVerification(id));
             }
 
