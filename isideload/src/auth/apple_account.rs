@@ -216,7 +216,7 @@ impl AppleAccount {
                         selected_number_id: None,
                     })
                     .await?;
-
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
                             self.login_state = self
@@ -255,6 +255,7 @@ impl AppleAccount {
                         selected_number_id: Some(id),
                     })
                     .await?;
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
                             self.login_state = self
@@ -302,7 +303,7 @@ impl AppleAccount {
                         selected_number_id: None,
                     })
                     .await?;
-
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(_) => {
                             bail!("Cannot submit code without knowing which method to use");
