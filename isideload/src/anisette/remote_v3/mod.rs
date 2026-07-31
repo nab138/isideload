@@ -1,25 +1,27 @@
 mod state;
+mod websocket;
 
 use std::sync::Arc;
-use std::time::SystemTime;
+use web_time::SystemTime;
 
 use base64::prelude::*;
 use plist_macro::plist;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+use reqwest::{
+    ClientBuilder,
+    header::{CONTENT_TYPE, HeaderMap, HeaderValue},
+};
+use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::option_ext::OptionExt;
 use rootcause::prelude::*;
 use serde::Deserialize;
-use tokio::time::{Duration, timeout};
-use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info, warn};
 
-use crate::SideloadError;
-use crate::anisette::remote_v3::state::AnisetteState;
+use crate::anisette::remote_v3::{state::AnisetteState, websocket::WsMessage};
 use crate::anisette::{AnisetteClientInfo, AnisetteData, AnisetteProvider};
 use crate::auth::grandslam::GrandSlam;
 use crate::util::plist::PlistDataExtract;
 use crate::util::storage::{SideloadingStorage, new_storage};
-use futures_util::{SinkExt, StreamExt};
+use crate::{SideloadError, anisette::remote_v3::websocket::AppWebSocket};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
 
@@ -28,7 +30,8 @@ pub struct RemoteV3AnisetteProvider {
     url: String,
     storage: Box<dyn SideloadingStorage>,
     serial_number: String,
-    client: reqwest::Client,
+    client: reqwest_middleware::ClientWithMiddleware,
+    websocket_proxy: Option<String>,
 }
 
 impl RemoteV3AnisetteProvider {
@@ -48,10 +51,33 @@ impl RemoteV3AnisetteProvider {
             url: url.to_string(),
             storage,
             serial_number,
-            client: reqwest::ClientBuilder::new()
-                .build()
-                .context("Failed to build HTTP client")?,
+            client: Self::build_reqwest_client(None)?,
+            websocket_proxy: None,
         })
+    }
+
+    pub fn set_websocket_proxy(mut self, websocket_proxy: Option<String>) -> Result<Self, Report> {
+        self.websocket_proxy = websocket_proxy;
+        self.client = Self::build_reqwest_client(self.websocket_proxy.clone())?;
+        Ok(self)
+    }
+
+    fn build_reqwest_client(
+        websocket_proxy: Option<String>,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
+        if let Some(websocket_proxy) = websocket_proxy {
+            use crate::auth::middleware::WasmProxyMiddleware;
+
+            let client = ClientBuilder::new().build()?;
+
+            Ok(MwClientBuilder::new(client)
+                .with(WasmProxyMiddleware::new(websocket_proxy))
+                .build())
+        } else {
+            let client = ClientBuilder::new().build()?;
+
+            Ok(MwClientBuilder::new(client).build())
+        }
     }
 
     pub fn default() -> Result<Self, Report> {
@@ -78,7 +104,8 @@ impl RemoteV3AnisetteProvider {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(feature = "wasm", async_trait::async_trait(?Send))]
+#[cfg_attr(not(feature = "wasm"), async_trait::async_trait)]
 impl AnisetteProvider for RemoteV3AnisetteProvider {
     async fn get_anisette_data(&self) -> Result<AnisetteData, Report> {
         let state = self
@@ -174,7 +201,7 @@ impl RemoteV3AnisetteProvider {
         let state = self.state.as_mut().ok_or_report()?;
         if !state.is_provisioned() {
             info!("Provisioning required...");
-            Self::provision(state, gs, &self.url)
+            Self::provision(state, gs, &self.url, self.websocket_proxy.as_deref())
                 .await
                 .context("Failed to provision")?;
         }
@@ -216,6 +243,7 @@ impl RemoteV3AnisetteProvider {
         state: &mut AnisetteState,
         gs: Arc<GrandSlam>,
         url: &str,
+        proxy_url: Option<&str>,
     ) -> Result<(), Report> {
         let start_provisioning = gs.get_url("midStartProvisioning")?;
         let end_provisioning = gs.get_url("midFinishProvisioning")?;
@@ -225,47 +253,46 @@ impl RemoteV3AnisetteProvider {
             .replace("http://", "ws://");
 
         debug!("Starting provisioning at {}", websocket_url);
-        let (mut ws_stream, _) = timeout(
-            Duration::from_secs(30),
-            tokio_tungstenite::connect_async(&websocket_url),
-        )
-        .await
-        .map_err(|_| {
-            report!("Timed out connecting to provisioning socket. Try a different anisette server.")
-        })
-        .context("Failed to connect to provisioning socket")?
-        .context("Failed to connect to provisioning socket")?;
+        // let (mut ws_stream, _) = timeout(
+        //     Duration::from_secs(30),
+        //     tokio_tungstenite::connect_async(&websocket_url),
+        // )
+        // .await
+        // .map_err(|_| {
+        //     report!("Timed out connecting to provisioning socket. Try a different anisette server.")
+        // })
+        // .context("Failed to connect to provisioning socket")?
+        // .context("Failed to connect to provisioning socket")?;
+
+        let mut ws = AppWebSocket::connect(&websocket_url, proxy_url.as_deref())
+            .await
+            .context("Failed to connect to provisioning socket")?;
 
         debug!("Connected to provisioning socket");
 
         loop {
-            let Some(msg) = ws_stream.next().await else {
-                continue;
-            };
-            let msg = msg.context("Failed to read anisette provisioning socket message")?;
-            if msg.is_close() {
-                bail!("Anisette provisioning socket closed unexpectedly");
-            }
-            let msg = msg
-                .into_text()
-                .context("Failed to parse provisioning message")?;
+            let Some(msg) = ws.next().await else { continue };
+            let msg = msg?;
 
-            debug!("Received provisioning message: {}", msg);
-            let provision_msg: ProvisioningMessage =
-                serde_json::from_str(&msg).context("Unknown provisioning message")?;
+            let text = match msg {
+                WsMessage::Close => bail!("Provisioning socket closed unexpectedly"),
+                WsMessage::Text(t) => t,
+            };
+
+            debug!("Received provisioning message: {}", text);
+            let provision_msg: ProvisioningMessage = serde_json::from_str(&text)?;
 
             match provision_msg {
                 ProvisioningMessage::GiveIdentifier => {
-                    ws_stream
-                        .send(Message::Text(
-                            serde_json::json!({
-                                "identifier": BASE64_STANDARD.encode(state.keychain_identifier),
-                            })
-                            .to_string()
-                            .into(),
-                        ))
-                        .await
-                        .context("Failed to send identifier")?;
+                    ws.send_text(
+                        serde_json::json!({
+                            "identifier": BASE64_STANDARD.encode(state.keychain_identifier),
+                        })
+                        .to_string()
+                        .into(),
+                    )
+                    .await
+                    .context("Failed to send identifier")?;
                 }
                 ProvisioningMessage::GiveStartProvisioningData => {
                     let body = plist!(dict {
@@ -286,16 +313,15 @@ impl RemoteV3AnisetteProvider {
                         .get_str("spim")
                         .context("Start provisioning response missing spim")?;
 
-                    ws_stream
-                        .send(Message::Text(
-                            serde_json::json!({
-                                "spim": spim,
-                            })
-                            .to_string()
-                            .into(),
-                        ))
-                        .await
-                        .context("Failed to send start provisioning data")?;
+                    ws.send_text(
+                        serde_json::json!({
+                            "spim": spim,
+                        })
+                        .to_string()
+                        .into(),
+                    )
+                    .await
+                    .context("Failed to send start provisioning data")?;
                 }
                 ProvisioningMessage::GiveEndProvisioningData { cpim } => {
                     let body = plist!(dict {
@@ -314,25 +340,24 @@ impl RemoteV3AnisetteProvider {
                         .await
                         .context("Failed to send end provisioning request")?;
 
-                    ws_stream
-                        .send(Message::Text(
-                            serde_json::json!({
-                                "ptm": response
-                                    .get_str("ptm")
-                                    .context("End provisioning response missing ptm")?,
-                                "tk": response
-                                    .get_str("tk")
-                                    .context("End provisioning response missing tk")?,
-                            })
-                            .to_string()
-                            .into(),
-                        ))
-                        .await
-                        .context("Failed to send start provisioning data")?;
+                    ws.send_text(
+                        serde_json::json!({
+                            "ptm": response
+                                .get_str("ptm")
+                                .context("End provisioning response missing ptm")?,
+                            "tk": response
+                                .get_str("tk")
+                                .context("End provisioning response missing tk")?,
+                        })
+                        .to_string()
+                        .into(),
+                    )
+                    .await
+                    .context("Failed to send start provisioning data")?;
                 }
                 ProvisioningMessage::ProvisioningSuccess { adi_pb } => {
                     state.adi_pb = Some(BASE64_STANDARD.decode(adi_pb)?);
-                    ws_stream.close(None).await?;
+                    ws.close().await?;
                     info!("Provisioning successful");
                     break;
                 }

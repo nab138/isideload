@@ -7,7 +7,7 @@ use isideload::{
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::{keyring_storage::KeyringStorage, storage::InMemoryStorage},
+    util::keyring_storage::KeyringStorage,
 };
 use std::{env, path::PathBuf};
 
@@ -16,9 +16,12 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
     isideload::init().expect("Failed to initialize error reporting");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
@@ -32,7 +35,7 @@ async fn main() {
         args.get(3).unwrap_or(&"".to_string()), // .expect("Please provide the path to the app to install"),
     );
 
-    let get_2fa_code = |params: TwoFactorCallbackParams| {
+    let get_2fa_code = async |params: TwoFactorCallbackParams| {
         let mut code = String::new();
 
         if params.unknown {
@@ -86,28 +89,29 @@ async fn main() {
 
         if code.trim().starts_with('p') {
             let selected_id = code.trim()[1..].parse::<u32>().unwrap();
-            return TwoFactorCallbackResponse::SendSms(selected_id);
+            return Ok(TwoFactorCallbackResponse::SendSms(selected_id));
         }
 
         if code.trim() == "d" {
-            return TwoFactorCallbackResponse::SendToDevices;
+            return Ok(TwoFactorCallbackResponse::SendToDevices);
         }
 
         if code.trim() == "r" && !params.unknown {
-            return TwoFactorCallbackResponse::ResendCode;
+            return Ok(TwoFactorCallbackResponse::ResendCode);
         }
 
-        TwoFactorCallbackResponse::SubmitCode(code.trim().to_string())
+        Ok(TwoFactorCallbackResponse::SubmitCode(
+            code.trim().to_string(),
+        ))
     };
 
     let account = AppleAccount::builder(apple_id)
         .anisette_provider(
             RemoteV3AnisetteProvider::default()
                 .unwrap()
-                .set_serial_number("2".to_string())
-                .set_storage(Box::new(InMemoryStorage::new())),
+                .set_serial_number("2".to_string()),
         )
-        .login(apple_password, Box::new(get_2fa_code))
+        .login(apple_password, get_2fa_code)
         .await;
 
     let mut account = account.unwrap();
@@ -188,7 +192,14 @@ async fn main() {
         .machine_name("isideload-minimal".to_string())
         .build();
 
-    let result = sideloader.install_app(&provider, app_path, true).await;
+    let result = sideloader
+        .install_app(
+            &provider,
+            app_path,
+            true,
+            None::<fn(f32) -> std::future::Ready<()>>,
+        )
+        .await;
     match result {
         Ok(_) => println!("App installed successfully"),
         Err(e) => panic!("{}", e),

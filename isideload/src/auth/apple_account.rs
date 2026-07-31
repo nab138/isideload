@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use crate::{
     SideloadError,
@@ -34,6 +34,7 @@ pub struct AppleAccount {
     pub trusted_phone_numbers: Option<Vec<TrustedNumber>>,
     login_state: LoginState,
     debug: bool,
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +61,7 @@ pub struct TrustedNumber {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TwoFactorCallbackParams {
+    pub last_error: Option<String>,
     // If this is true, we don't know what's going to work, so present the user with all the options and let them choose
     pub unknown: bool,
     pub sms: bool,
@@ -67,7 +69,7 @@ pub struct TwoFactorCallbackParams {
     pub selected_number_id: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TwoFactorCallbackResponse {
     SubmitCode(String),
     SendSms(u32),
@@ -82,9 +84,6 @@ pub struct SMSTwoFactorError {
     pub title: String,
     pub message: String,
 }
-
-pub type TwoFactorCallback =
-    Box<dyn Fn(TwoFactorCallbackParams) -> TwoFactorCallbackResponse + Send + Sync>;
 
 impl AppleAccount {
     /// Create a new AppleAccountBuilder with the given email
@@ -106,6 +105,7 @@ impl AppleAccount {
         email: &str,
         anisette_generator: AnisetteDataGenerator,
         debug: bool,
+        proxy_url: Option<String>,
     ) -> Result<Self, Report> {
         if debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -116,7 +116,7 @@ impl AppleAccount {
             .await
             .context("Failed to get anisette client info")?;
 
-        let grandslam_client = GrandSlam::new(client_info, debug).await?;
+        let grandslam_client = GrandSlam::new(client_info, debug, proxy_url.clone()).await?;
 
         Ok(AppleAccount {
             email: email.to_string(),
@@ -126,6 +126,7 @@ impl AppleAccount {
             debug,
             login_state: LoginState::NeedsLogin,
             trusted_phone_numbers: None,
+            last_error: None,
         })
     }
 
@@ -135,11 +136,41 @@ impl AppleAccount {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the login fails
-    pub async fn login(
+    #[cfg(target_arch = "wasm32")]
+    pub async fn login<C, Fut>(
         &mut self,
         password: &str,
-        two_factor_callback: TwoFactorCallback,
-    ) -> Result<(), Report> {
+        two_factor_callback: C,
+    ) -> Result<(), Report>
+    where
+        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
+        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+    {
+        self.login_impl(password, two_factor_callback).await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn login<C, Fut>(
+        &mut self,
+        password: &str,
+        two_factor_callback: C,
+    ) -> Result<(), Report>
+    where
+        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
+        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
+    {
+        self.login_impl(password, two_factor_callback).await
+    }
+
+    async fn login_impl<C, Fut>(
+        &mut self,
+        password: &str,
+        two_factor_callback: C,
+    ) -> Result<(), Report>
+    where
+        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
+        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+    {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -178,12 +209,14 @@ impl AppleAccount {
                 }
                 LoginState::NeedsDevice2FAVerification => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
+                        last_error: self.last_error.clone(),
                         unknown: false,
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
-                    });
-
+                    })
+                    .await?;
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
                             self.login_state = self
@@ -216,11 +249,13 @@ impl AppleAccount {
                 LoginState::NeedsSMS2FAVerification(id) => {
                     let response = two_factor_callback(TwoFactorCallbackParams {
                         unknown: false,
+                        last_error: self.last_error.clone(),
                         sms: true,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: Some(id),
-                    });
-
+                    })
+                    .await?;
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(code) => {
                             self.login_state = self
@@ -262,11 +297,13 @@ impl AppleAccount {
                     );
                     let response = two_factor_callback(TwoFactorCallbackParams {
                         unknown: true,
+                        last_error: self.last_error.clone(),
                         sms: false,
                         numbers: self.trusted_phone_numbers.clone().unwrap_or_default(),
                         selected_number_id: None,
-                    });
-
+                    })
+                    .await?;
+                    self.last_error = None;
                     match response {
                         TwoFactorCallbackResponse::SubmitCode(_) => {
                             bail!("Cannot submit code without knowing which method to use");
@@ -377,6 +414,8 @@ impl AppleAccount {
                             // Incorrect Verification Code, let the user try again
                             -21669 => {
                                 warn!("{} - {}", code, message);
+                                self.last_error = format!("{} - {}", code, message).into();
+
                                 return Ok(LoginState::NeedsDevice2FAVerification);
                             }
                             _ => {}
@@ -439,12 +478,14 @@ impl AppleAccount {
             if error.code == "-28248" {
                 // Verification codes can’t be sent to this phone number at this time. Please try again later.
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
             if error.code == "-22979" {
                 // Too many verification codes have been sent. - Enter the last code you received or try again later.
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
@@ -452,6 +493,7 @@ impl AppleAccount {
                 // Too many verification codes have been sent. - Enter the last code you received or try again later.
                 // Not sure why there are two identical errors with different codes
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsUnknown2FA);
             }
 
@@ -506,6 +548,7 @@ impl AppleAccount {
             if error.code == "-21669" {
                 // Incorrect Verification Code, let the user try again
                 warn!("{} - {}", error.title, error.message);
+                self.last_error = format!("{} - {}", error.title, error.message).into();
                 return Ok(LoginState::NeedsSMS2FAVerification(id));
             }
 

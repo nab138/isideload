@@ -13,19 +13,21 @@ use crate::{
     util::plist::PlistDataExtract,
 };
 
-pub fn sign(
+pub async fn sign<F, Fut>(
     app: &mut Application,
     cert_identity: &CertificateIdentity,
     provisioning_profile: &Profile,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
-) -> Result<(), Report> {
+    progress_callback: Option<F>,
+) -> Result<(), Report>
+where
+    F: Fn(f32) -> Fut,
+    Fut: Future<Output = ()>,
+{
     let mut settings = signing_settings(cert_identity)?;
-    let entitlements: Dictionary = entitlements_from_prov(
-        provisioning_profile.encoded_profile.as_ref(),
-        special,
-        team,
-    )?;
+    let entitlements: Dictionary =
+        entitlements_from_prov(provisioning_profile.encoded_profile.as_ref(), special, team)?;
 
     settings
         .set_entitlements_xml(
@@ -35,7 +37,12 @@ pub fn sign(
         .context("Failed to set entitlements XML")?;
     let signer = UnifiedSigner::new(settings);
 
-    for bundle in app.bundle.collect_bundles_sorted() {
+    let sorted_bundles = app.bundle.collect_bundles_sorted();
+
+    for (index, bundle) in sorted_bundles.iter().enumerate() {
+        if let Some(callback) = &progress_callback {
+            callback(0.3 + 0.7 * (index as f32 / sorted_bundles.len() as f32)).await;
+        }
         info!(
             "Signing {}",
             bundle
@@ -44,6 +51,7 @@ pub fn sign(
                 .unwrap_or(bundle.bundle_dir.as_os_str())
                 .to_string_lossy()
         );
+
         signer
             .sign_path_in_place(&bundle.bundle_dir)
             .context(format!(
