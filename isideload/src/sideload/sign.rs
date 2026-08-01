@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use apple_codesign::{
     BundleSigningSettings, ProvisioningProfile, RustCryptoCmsSigner, sign_bundle,
 };
 
+use plist::Dictionary;
 use rootcause::prelude::*;
 
 use crate::{
@@ -15,7 +18,8 @@ use crate::{
 pub async fn sign<F, Fut>(
     app: &mut Application,
     cert_identity: &CertificateIdentity,
-    provisioning_profile: &Profile,
+    main_provisioning_profile: &Profile,
+    all_profiles: &Vec<(String, Profile, Dictionary)>,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
     progress_callback: Option<F>,
@@ -24,7 +28,7 @@ where
     F: Fn(f32) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let profile = ProvisioningProfile::parse(provisioning_profile.encoded_profile.as_ref())?;
+    let profile = ProvisioningProfile::parse(main_provisioning_profile.encoded_profile.as_ref())?;
     let certificate_chain = cert_identity.profile_to_certificate_chain(&profile)?;
 
     let signer = RustCryptoCmsSigner::new(
@@ -35,25 +39,16 @@ where
 
     let mut settings =
         BundleSigningSettings::new(&team.team_id, profile.entitlements().clone(), Some(&signer));
-    settings.embedded_mobileprovision = Some(provisioning_profile.encoded_profile.as_ref());
-    // let nested_profiles = args
-    //     .profiles_by_bundle_id
-    //     .iter()
-    //     .map(|(bundle_id, path)| {
-    //         let data = read_file(path)?;
-    //         let profile = ProvisioningProfile::parse(&data)?;
-    //         let entitlements = profile.entitlements().clone();
-    //         Ok((bundle_id.clone(), data, entitlements))
-    //     })
-    //     .collect::<Result<Vec<_>>>()?;
-    // settings.embedded_mobileprovisions_by_bundle_id = nested_profiles
-    //     .iter()
-    //     .map(|(bundle_id, data, _)| (bundle_id.clone(), data.as_slice()))
-    //     .collect::<BTreeMap<_, _>>();
-    // settings.entitlements_by_bundle_id = nested_profiles
-    //     .iter()
-    //     .map(|(bundle_id, _, entitlements)| (bundle_id.clone(), entitlements.clone()))
-    //     .collect();
+    settings.embedded_mobileprovision = Some(main_provisioning_profile.encoded_profile.as_ref());
+
+    settings.embedded_mobileprovisions_by_bundle_id = all_profiles
+        .iter()
+        .map(|(bundle_id, data, _)| (bundle_id.clone(), data.encoded_profile.as_ref()))
+        .collect::<BTreeMap<_, _>>();
+    settings.entitlements_by_bundle_id = all_profiles
+        .iter()
+        .map(|(bundle_id, _, entitlements)| (bundle_id.clone(), entitlements.clone()))
+        .collect();
 
     Ok(sign_bundle(&app.bundle.bundle_dir, &settings)?)
 }

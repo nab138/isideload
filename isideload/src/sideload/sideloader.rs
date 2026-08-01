@@ -1,7 +1,7 @@
 use crate::{
     dev::{
         app_groups::AppGroupsApi,
-        app_ids::AppIdsApi,
+        app_ids::{AppIdsApi, Profile},
         developer_session::DeveloperSession,
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
@@ -18,7 +18,9 @@ use crate::{
 
 use std::path::PathBuf;
 
+use apple_codesign::ProvisioningProfile;
 use idevice::provider::IdeviceProvider;
+use plist::Dictionary;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
@@ -160,10 +162,33 @@ impl Sideloader {
             .await
             .context("Failed to modify app bundle")?;
 
-        let provisioning_profile = self
+        let main_provisioning_profile = self
             .dev_session
             .download_team_provisioning_profile(&team, &main_app_id, None)
             .await?;
+
+        let mut provisioning_profiles: Vec<(String, Profile, Dictionary)> = Vec::new();
+
+        for id in app_ids
+            .into_iter()
+            .filter(|id| id.identifier != main_app_id.identifier)
+        {
+            let bundle_id = id.identifier.clone();
+
+            let profile = self
+                .dev_session
+                .download_team_provisioning_profile(&team, &id, None)
+                .await
+                .context(format!(
+                    "Failed to download provisioning profile for {}",
+                    bundle_id
+                ))?;
+
+            let parsed_profile = ProvisioningProfile::parse(profile.encoded_profile.as_ref())?;
+            let entitlements = parsed_profile.entitlements().clone();
+
+            provisioning_profiles.push((bundle_id, profile, entitlements));
+        }
 
         if let Some(callback) = &progress_callback {
             callback(0.2).await;
@@ -179,10 +204,10 @@ impl Sideloader {
             ext.write_info()?;
         }
 
-        isideload_vfs::fs::write(
-            app.bundle.bundle_dir.join("embedded.mobileprovision"),
-            provisioning_profile.encoded_profile.as_ref(),
-        )?;
+        // isideload_vfs::fs::write(
+        //     app.bundle.bundle_dir.join("embedded.mobileprovision"),
+        //     provisioning_profile.encoded_profile.as_ref(),
+        // )?;
 
         if let Some(callback) = &progress_callback {
             callback(0.3).await;
@@ -191,7 +216,8 @@ impl Sideloader {
         sign::sign(
             &mut app,
             &cert_identity,
-            &provisioning_profile,
+            &main_provisioning_profile,
+            &provisioning_profiles,
             &special,
             &team,
             progress_callback,
