@@ -295,16 +295,16 @@ impl Application {
                     plist::Value::String(cert.get_serial_number()),
                 );
 
-                // let p12_bytes = cert
-                //     .as_p12(&cert.machine_id)
-                //     .await
-                //     .context("Failed to encode cert as p12")?;
-                // let alt_cert_path = target_bundle.bundle_dir.join(cert_file_name);
+                let p12_bytes = cert
+                    .as_p12(&cert.machine_id)
+                    .await
+                    .context("Failed to encode cert as p12")?;
+                let alt_cert_path = target_bundle.bundle_dir.join(cert_file_name);
 
-                // let mut file = isideload_vfs::fs::File::create(&alt_cert_path)
-                //     .context(format!("Failed to create {}", cert_file_name))?;
-                // file.write_all(&p12_bytes)
-                //     .context(format!("Failed to write {}", cert_file_name))?;
+                let mut file = isideload_vfs::fs::File::create(&alt_cert_path)
+                    .context(format!("Failed to create {}", cert_file_name))?;
+                file.write_all(&p12_bytes)
+                    .context(format!("Failed to write {}", cert_file_name))?;
             }
         }
         Ok(())

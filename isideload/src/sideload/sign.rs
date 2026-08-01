@@ -36,9 +36,34 @@ where
         cert_identity.certificate.clone(),
         certificate_chain,
     );
+    if let Some(callback) = &progress_callback {
+        callback(0.4).await;
+    }
 
-    let mut settings =
-        BundleSigningSettings::new(&team.team_id, profile.entitlements().clone(), Some(&signer));
+    let mut entitlements = profile.entitlements().clone();
+    if matches!(
+        special,
+        Some(SpecialApp::SideStoreLc) | Some(SpecialApp::LiveContainer)
+    ) {
+        let mut keychain_access = vec![plist::Value::String(format!(
+            "{}.com.kdt.livecontainer.shared",
+            team.team_id
+        ))];
+
+        for number in 1..128 {
+            keychain_access.push(plist::Value::String(format!(
+                "{}.com.kdt.livecontainer.shared.{}",
+                team.team_id, number
+            )));
+        }
+
+        entitlements.insert(
+            "keychain-access-groups".to_string(),
+            plist::Value::Array(keychain_access),
+        );
+    }
+
+    let mut settings = BundleSigningSettings::new(&team.team_id, entitlements, Some(&signer));
     settings.embedded_mobileprovision = Some(main_provisioning_profile.encoded_profile.as_ref());
 
     settings.embedded_mobileprovisions_by_bundle_id = all_profiles
@@ -49,6 +74,10 @@ where
         .iter()
         .map(|(bundle_id, _, entitlements)| (bundle_id.clone(), entitlements.clone()))
         .collect();
+
+    if let Some(callback) = &progress_callback {
+        callback(0.5).await;
+    }
 
     Ok(sign_bundle(&app.bundle.bundle_dir, &settings)?)
 }

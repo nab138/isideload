@@ -8,9 +8,13 @@ use rsa::{
     pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding},
 };
 
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tracing::{error, info};
-use x509_cert::{Certificate, der::Decode};
+use x509_cert::{
+    Certificate,
+    der::{Decode, Encode},
+};
 
 use crate::{
     SideloadError,
@@ -37,63 +41,64 @@ impl CertificateIdentity {
     // This implementation was mostly borrowed from Impactor (https://github.com/khcrysalis/Impactor/blob/main/crates/plume_core/src/utils/certificate.rs)
     /// Exports the certificate and private key as a PKCS#12 archive
     /// If you plan to import into SideStore/AltStore, use the machine id as the password
-    // pub async fn as_p12(&self, password: &str) -> Result<Vec<u8>, Report> {
-    //     let cert_der = self.certificate.encode_der()?;
-    //     let cert_der_len = cert_der.len();
-    //     let key_der = self.private_key.to_pkcs8_der()?.as_bytes().to_vec();
-    //     let key_der_len = key_der.len();
+    pub async fn as_p12(&self, password: &str) -> Result<Vec<u8>, Report> {
+        let cert_der = self.certificate.to_der()?;
+        let cert_der_len = cert_der.len();
+        let key_der = self.private_key.to_pkcs8_der()?.as_bytes().to_vec();
+        let key_der_len = key_der.len();
 
-    //     let cert = p12_keystore::Certificate::from_der(&cert_der)
-    //         .map_err(|e| report!("Failed to parse certificate: {:?}", e))?;
-    //     let cert_subject = cert.subject().to_string();
-    //     let cert_issuer = cert.issuer().to_string();
+        let cert = p12_keystore::Certificate::from_der(&cert_der)
+            .map_err(|e| report!("Failed to parse certificate: {:?}", e))?;
+        let cert_subject = cert.subject().to_string();
+        let cert_issuer = cert.issuer().to_string();
 
-    //     let local_key_id = {
-    //         let mut hasher = Sha1::new();
-    //         hasher.update(&key_der);
-    //         let hash = hasher.finalize();
-    //         hash[..8].to_vec()
-    //     };
+        let local_key_id = {
+            let mut hasher = Sha1::new();
+            hasher.update(&key_der);
+            let hash = hasher.finalize();
+            hash[..8].to_vec()
+        };
 
-    //     let key_chain = p12_keystore::PrivateKeyChain::new(
-    //         local_key_id,
-    //         p12_keystore::PrivateKey::from_der(&key_der)?,
-    //         vec![cert],
-    //     );
+        let key_chain = p12_keystore::PrivateKeyChain::new(
+            local_key_id,
+            p12_keystore::PrivateKey::from_der(&key_der)?,
+            vec![cert],
+        );
 
-    //     let mut keystore = p12_keystore::KeyStore::new();
-    //     keystore.add_entry(
-    //         "isideload",
-    //         p12_keystore::KeyStoreEntry::PrivateKeyChain(key_chain),
-    //     );
+        let mut keystore = p12_keystore::KeyStore::new();
+        keystore.add_entry(
+            "isideload",
+            p12_keystore::KeyStoreEntry::PrivateKeyChain(key_chain),
+        );
 
-    //     let writer = keystore.writer(password);
-    //     match writer.write() {
-    //         Ok(p12) => Ok(p12),
-    //         Err(e) => {
-    //             let subject_codepoints = cert_subject
-    //                 .chars()
-    //                 .map(|c| format!("U+{:04X}", c as u32))
-    //                 .collect::<Vec<_>>()
-    //                 .join(" ");
-    //             let has_non_bmp_subject_chars = cert_subject.chars().any(|c| (c as u32) > 0xFFFF);
+        let writer = keystore.writer(password);
+        match writer.write() {
+            Ok(p12) => Ok(p12),
+            Err(e) => {
+                let subject_codepoints = cert_subject
+                    .chars()
+                    .map(|c| format!("U+{:04X}", c as u32))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let has_non_bmp_subject_chars = cert_subject.chars().any(|c| (c as u32) > 0xFFFF);
 
-    //             error!(
-    //                 cert_subject = %cert_subject,
-    //                 cert_issuer = %cert_issuer,
-    //                 cert_subject_codepoints = %subject_codepoints,
-    //                 has_non_bmp_subject_chars,
-    //                 cert_der_len,
-    //                 key_der_len,
-    //                 password_char_len = password.chars().count(),
-    //                 "Failed to write PKCS#12 archive"
-    //             );
+                error!(
+                    cert_subject = %cert_subject,
+                    cert_issuer = %cert_issuer,
+                    cert_subject_codepoints = %subject_codepoints,
+                    has_non_bmp_subject_chars,
+                    cert_der_len,
+                    key_der_len,
+                    password_char_len = password.chars().count(),
+                    "Failed to write PKCS#12 archive"
+                );
 
-    //             let err = format!("Failed to write PKCS#12 archive: {:?}", e);
-    //             Err(e).context(err)?
-    //         }
-    //     }
-    // }
+                let err = format!("Failed to write PKCS#12 archive: {:?}", e);
+                Err(e).context(err)?
+            }
+        }
+    }
+
     pub fn get_serial_number(&self) -> String {
         let serial: String = self
             .certificate
