@@ -30,7 +30,7 @@ reqwest = { version = "0.13.2", default-features = false, features = ["json", "g
 thiserror = "2.0.17"
 async-trait = "0.1.89"
 serde = "1.0.228"
-rand = "0.10.0"
+rand = "0.8.6"
 uuid = {version = "1.20.0", features = ["v4"] }
 tracing = "0.1.44"
 tokio-tungstenite = { version = "0.29.0", features = ["rustls-tls-webpki-roots"], optional = true }
@@ -46,14 +46,14 @@ hmac = "0.13.0"
 cbc = { version = "0.2.0", features = ["alloc"] }
 aes = "0.9.0"
 aes-gcm = "0.11.0-rc.3"
-rsa = { version = "0.10.0-rc.17" }
+rsa = { version = "0.9.10" }
 tokio = { version = "1.49" }
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
-x509-certificate = { version = "0.26.1", package = "isideload-x509-certificate" } #, path = "../../cryptography-rs/x509-certificate" }
+# x509-certificate = { version = "0.26.1", package = "isideload-x509-certificate" } #, path = "../../cryptography-rs/x509-certificate" }
 rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
-p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
+# p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
 zip = { version = "8.3", default-features = false, features = ["deflate"] }
-apple-codesign = { version = "0.29.11", package = "isideload-apple-codesign" }#, path = "../../isideload-apple-platform-rs/apple-codesign"}
+# apple-codesign = { version = "0.1.0", package = "isideload-apple-codesign", git = "https://github.com/Dadoum/apple-crates" }#, path = "../../isideload-apple-platform-rs/apple-codesign"}
 isideload-vfs = { version = "0.0.1" } #, path = "../../isideload-apple-platform-rs/isideload-vfs" }
 sha1 = "0.11.0"
 rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "std"] }
@@ -63,6 +63,8 @@ urlencoding = { version = "2.1.3" }
 futures = "0.3.32"
 ws_stream_wasm = { version = "0.7.5", optional = true}
 web-time = "1"
+apple-codesign = { path = "../../apple-crates/apple-codesign-quick" } # git = "https://github.com/Dadoum/apple-crates", version = "0.1.0" }
+x509-cert = "0.2.5"
 
 
 # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.

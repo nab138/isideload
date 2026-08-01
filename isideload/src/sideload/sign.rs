@@ -1,8 +1,8 @@
-use apple_codesign::{SigningSettings, UnifiedSigner};
-use plist::Dictionary;
-use plist_macro::plist_to_xml_string;
-use rootcause::{option_ext::OptionExt, prelude::*};
-use tracing::info;
+use apple_codesign::{
+    BundleSigningSettings, ProvisioningProfile, RustCryptoCmsSigner, sign_bundle,
+};
+
+use rootcause::prelude::*;
 
 use crate::{
     dev::{app_ids::Profile, teams::DeveloperTeam},
@@ -10,7 +10,6 @@ use crate::{
         application::{Application, SpecialApp},
         cert_identity::CertificateIdentity,
     },
-    util::plist::PlistDataExtract,
 };
 
 pub async fn sign<F, Fut>(
@@ -25,98 +24,36 @@ where
     F: Fn(f32) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let mut settings = signing_settings(cert_identity)?;
-    let entitlements: Dictionary =
-        entitlements_from_prov(provisioning_profile.encoded_profile.as_ref(), special, team)?;
+    let profile = ProvisioningProfile::parse(provisioning_profile.encoded_profile.as_ref())?;
+    let certificate_chain = cert_identity.profile_to_certificate_chain(&profile)?;
 
-    settings
-        .set_entitlements_xml(
-            apple_codesign::SettingsScope::Main,
-            plist_to_xml_string(&entitlements),
-        )
-        .context("Failed to set entitlements XML")?;
-    let signer = UnifiedSigner::new(settings);
+    let signer = RustCryptoCmsSigner::new(
+        cert_identity.private_key.clone(),
+        cert_identity.certificate.clone(),
+        certificate_chain,
+    );
 
-    let sorted_bundles = app.bundle.collect_bundles_sorted();
+    let mut settings =
+        BundleSigningSettings::new(&team.team_id, profile.entitlements().clone(), Some(&signer));
+    settings.embedded_mobileprovision = Some(provisioning_profile.encoded_profile.as_ref());
+    // let nested_profiles = args
+    //     .profiles_by_bundle_id
+    //     .iter()
+    //     .map(|(bundle_id, path)| {
+    //         let data = read_file(path)?;
+    //         let profile = ProvisioningProfile::parse(&data)?;
+    //         let entitlements = profile.entitlements().clone();
+    //         Ok((bundle_id.clone(), data, entitlements))
+    //     })
+    //     .collect::<Result<Vec<_>>>()?;
+    // settings.embedded_mobileprovisions_by_bundle_id = nested_profiles
+    //     .iter()
+    //     .map(|(bundle_id, data, _)| (bundle_id.clone(), data.as_slice()))
+    //     .collect::<BTreeMap<_, _>>();
+    // settings.entitlements_by_bundle_id = nested_profiles
+    //     .iter()
+    //     .map(|(bundle_id, _, entitlements)| (bundle_id.clone(), entitlements.clone()))
+    //     .collect();
 
-    for (index, bundle) in sorted_bundles.iter().enumerate() {
-        if let Some(callback) = &progress_callback {
-            callback(0.3 + 0.7 * (index as f32 / sorted_bundles.len() as f32)).await;
-        }
-        info!(
-            "Signing {}",
-            bundle
-                .bundle_dir
-                .file_name()
-                .unwrap_or(bundle.bundle_dir.as_os_str())
-                .to_string_lossy()
-        );
-
-        signer
-            .sign_path_in_place(&bundle.bundle_dir)
-            .context(format!(
-                "Failed to sign bundle: {}",
-                bundle.bundle_dir.display()
-            ))?;
-    }
-
-    Ok(())
-}
-
-pub fn signing_settings<'a>(cert: &'a CertificateIdentity) -> Result<SigningSettings<'a>, Report> {
-    let mut settings = SigningSettings::default();
-
-    cert.setup_signing_settings(&mut settings)?;
-    settings.set_for_notarization(false);
-    settings.set_shallow(true);
-
-    Ok(settings)
-}
-
-fn entitlements_from_prov(
-    data: &[u8],
-    special: &Option<SpecialApp>,
-    team: &DeveloperTeam,
-) -> Result<Dictionary, Report> {
-    let start = data
-        .windows(6)
-        .position(|w| w == b"<plist")
-        .ok_or_report()?;
-    let end = data
-        .windows(8)
-        .rposition(|w| w == b"</plist>")
-        .ok_or_report()?
-        + 8;
-    let plist_data = &data[start..end];
-    let plist = plist::Value::from_reader_xml(plist_data)?;
-
-    let mut entitlements = plist
-        .as_dictionary()
-        .ok_or_report()?
-        .get_dict("Entitlements")?
-        .clone();
-
-    if matches!(
-        special,
-        Some(SpecialApp::SideStoreLc) | Some(SpecialApp::LiveContainer)
-    ) {
-        let mut keychain_access = vec![plist::Value::String(format!(
-            "{}.com.kdt.livecontainer.shared",
-            team.team_id
-        ))];
-
-        for number in 1..128 {
-            keychain_access.push(plist::Value::String(format!(
-                "{}.com.kdt.livecontainer.shared.{}",
-                team.team_id, number
-            )));
-        }
-
-        entitlements.insert(
-            "keychain-access-groups".to_string(),
-            plist::Value::Array(keychain_access),
-        );
-    }
-
-    Ok(entitlements)
+    Ok(sign_bundle(&app.bundle.bundle_dir, &settings)?)
 }
