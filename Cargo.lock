@@ -87,7 +87,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 [[package]]
 name = "apple-codesign"
 version = "0.1.0"
-source = "git+https://github.com/Dadoum/apple-crates#8bc06b36d01082d82a47e425108afb086f4692cc"
+source = "git+https://github.com/Dadoum/apple-crates#a505b2a7c4bd5b9ecba75c17c10c3de8bdbc0f24"
 dependencies = [
  "byteorder",
  "cms 0.2.3",

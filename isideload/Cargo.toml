@@ -61,7 +61,7 @@ urlencoding = { version = "2.1.3" }
 futures = "0.3.32"
 ws_stream_wasm = { version = "0.7.5", optional = true}
 web-time = "1"
-apple-codesign = { git = "https://github.com/nab138/apple-crates", version = "0.1.0", package = "apple-codesign" }
+apple-codesign = { git = "https://github.com/Dadoum/apple-crates", version = "0.1.0", package = "apple-codesign" }
 x509-cert = "0.2.5"
 
 
