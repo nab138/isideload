@@ -1,4 +1,3 @@
-use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
@@ -120,22 +119,6 @@ async fn main() {
         .await
         .expect("Failed to create developer session");
 
-    let usbmuxd = UsbmuxdConnection::default().await;
-    if usbmuxd.is_err() {
-        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
-    }
-    let mut usbmuxd = usbmuxd.unwrap();
-
-    let devs = usbmuxd.get_devices().await.unwrap();
-    if devs.is_empty() {
-        panic!("No devices found");
-    }
-
-    let provider = devs
-        .first()
-        .unwrap()
-        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
-
     let team_selection_prompt = |teams: &Vec<DeveloperTeam>| {
         println!("Please select a team:");
         for (index, team) in teams.iter().enumerate() {
@@ -193,15 +176,19 @@ async fn main() {
         .build();
 
     let result = sideloader
-        .install_app(
-            &provider,
+        .sign_app(
             app_path,
-            true,
+            None,
+            false,
             None::<fn(f32) -> std::future::Ready<()>>,
         )
         .await;
     match result {
-        Ok(_) => println!("App installed successfully"),
+        Ok(_) => println!("App signed successfully"),
         Err(e) => panic!("{}", e),
     }
+
+    let capture = account.grandslam_client.export_capture_text();
+    std::fs::write("grandslam_capture.txt", capture)
+        .expect("Failed to write grandslam capture text");
 }

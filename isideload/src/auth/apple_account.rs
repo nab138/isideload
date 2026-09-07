@@ -7,7 +7,10 @@ use crate::{
         builder::AppleAccountBuilder,
         grandslam::{GrandSlam, GrandSlamErrorChecker},
     },
-    util::plist::{PlistDataExtract, SensitivePlistAttachment},
+    util::{
+        plist::{PlistDataExtract, SensitivePlistAttachment},
+        redact_plist::redact_plist,
+    },
 };
 use aes::{
     Aes256,
@@ -800,8 +803,39 @@ impl AppleAccount {
 
         let spd_decrypted = Self::decrypt_cbc(&verifier, spd_encrypted)
             .context("Failed to decrypt SPD from login response")?;
+
         let spd: plist::Dictionary =
             plist::from_bytes(&spd_decrypted).context("Failed to parse decrypted SPD plist")?;
+
+        {
+            let mut redacted_spd = spd.clone();
+
+            let keys_to_redact = [
+                "acname",
+                "fn",
+                "ln",
+                "email",
+                "adsid",
+                "GsIdmsToken",
+                "birthMM",
+                "sk",
+                "c",
+                "i",
+                "s",
+                "birthDD",
+                "yob",
+                "t/com.apple.gs.idms.pet/token",
+                "t/com.apple.gs.idms.hb/token",
+                "primaryEmail",
+            ];
+            redact_plist(&mut redacted_spd, &keys_to_redact).unwrap();
+
+            std::fs::write(
+                "spd.txt",
+                plist_macro::pretty_print_dictionary(&redacted_spd),
+            )
+            .context("Failed to write SPD to file")?;
+        }
 
         self.spd = Some(spd);
 

@@ -9,18 +9,188 @@ use reqwest::{
     header::{HeaderMap, HeaderValue},
 };
 use reqwest_middleware::ClientBuilder as MwClientBuilder;
+use reqwest_middleware::{Middleware, Next};
 use rootcause::prelude::*;
+use serde::Serialize;
+use std::sync::{Arc, Mutex};
 use tracing::debug;
 
 #[cfg(not(feature = "wasm"))]
 use crate::sideload::cert_identity::APPLE_ROOT;
+use crate::util::redact_plist::redact_plist;
 use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
 
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
 
+#[derive(Clone, Debug, Serialize)]
+pub struct GrandSlamPayload {
+    pub metadata: String,
+    pub data: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GrandSlamExchange {
+    pub request: GrandSlamPayload,
+    pub response: GrandSlamPayload,
+}
+
+#[derive(Clone, Default)]
+pub struct GrandSlamCapture {
+    exchanges: Arc<Mutex<Vec<GrandSlamExchange>>>,
+}
+
+impl GrandSlamCapture {
+    pub fn exchanges(&self) -> Vec<GrandSlamExchange> {
+        self.exchanges
+            .lock()
+            .expect("GrandSlam capture lock poisoned")
+            .clone()
+    }
+
+    pub fn export_text(&self) -> String {
+        let mut output = String::new();
+        for (index, exchange) in self.exchanges().iter().enumerate() {
+            output.push_str(&format!("=== Exchange {} ===\n", index + 1));
+            output.push_str("--- Metadata ---\n");
+            output.push_str(&exchange.request.metadata);
+            output.push_str(&exchange.response.metadata);
+            output.push_str("--- Request ---\n");
+            output.push_str(&exchange.request.data);
+            output.push_str("\n--- Response ---\n");
+            output.push_str(&exchange.response.data);
+            output.push_str("\n\n");
+        }
+        output
+    }
+
+    fn record(&self, exchange: GrandSlamExchange) {
+        self.exchanges
+            .lock()
+            .expect("GrandSlam capture lock poisoned")
+            .push(exchange);
+    }
+}
+
+struct GrandSlamCaptureMiddleware {
+    capture: GrandSlamCapture,
+}
+
+#[async_trait::async_trait]
+impl Middleware for GrandSlamCaptureMiddleware {
+    async fn handle(
+        &self,
+        req: reqwest::Request,
+        extensions: &mut http::Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<reqwest::Response> {
+        if req.url().as_str() == URL_BAG {
+            return next.run(req, extensions).await;
+        }
+        let request_data = req
+            .body()
+            .and_then(|body| body.as_bytes())
+            .map(format_payload)
+            .unwrap_or_default();
+        let req_metadata = format!("{} {}\n", req.method(), req.url());
+        let response = next.run(req, extensions).await?;
+        let status = response.status();
+        let version = response.version();
+        let headers = response.headers().clone();
+        let body = response.bytes().await?;
+
+        self.capture.record(GrandSlamExchange {
+            request: GrandSlamPayload {
+                metadata: req_metadata,
+                data: request_data,
+            },
+            response: GrandSlamPayload {
+                metadata: format!("{}\n", status),
+                data: format_payload(&body),
+            },
+        });
+
+        let mut builder = http::Response::builder().status(status).version(version);
+        for (name, value) in &headers {
+            builder = builder.header(name, value);
+        }
+        Ok(builder
+            .body(body)
+            .expect("captured response is valid")
+            .into())
+    }
+}
+
+fn format_payload(body: &[u8]) -> String {
+    let text = String::from_utf8_lossy(body).into_owned();
+    let Ok(value) = plist::from_bytes::<plist::Dictionary>(body) else {
+        return text;
+    };
+
+    let mut redacted_plist = value.clone();
+
+    redact_plist(
+        &mut redacted_plist,
+        &[
+            "spd",
+            "A2k",
+            "provisioningProfile/encodedProfile",
+            "provisioningProfile/name",
+            "provisioningProfile/filename",
+            "provisioningProfile/appId/prefix",
+            "provisioningProfile/appId/identifier",
+            "provisioningProfile/appId/appIdId",
+            "provisioningProfile/appIdId",
+            "provisioningProfile/provisioningProfileId",
+            "certificates/certContent",
+            "certificates/serialNumber",
+            "certificates/name",
+            "certificates/certificateId",
+            "B",
+            "c",
+            "t",
+            "et",
+            "name",
+            "teamId",
+            "teams/teamId",
+            "teams/name",
+            "teams/memberships/membershipId",
+            "teams/currentTeamMember/teamMemberId",
+            "teams/currentTeamMember/personId",
+            "teams/currentTeamMember/firstName",
+            "teams/currentTeamMember/lastName",
+            "teams/currentTeamMember/email",
+            "appIds/prefix",
+            "appIds/identifier",
+            "appIds/appIdId",
+            "appId/prefix",
+            "appId/identifier",
+            "identifier",
+            "applicationGroup/prefix",
+            "applicationGroup/identifier",
+            "applicationGroupList/prefix",
+            "applicationGroupList/identifier",
+            "s",
+            "X-Apple-I-MD",
+            "X-Apple-I-MD-M",
+            "X-Mme-Device-Id",
+            "cpd/X-Apple-I-MD-M",
+            "cpd/X-Apple-I-MD",
+            "cpd/X-Mme-Device-Id",
+            "teams/name",
+            "u",
+            "appIdId",
+            "applicationGroupList/applicationGroup",
+        ],
+    )
+    .unwrap();
+
+    plist_macro::pretty_print_dictionary(&redacted_plist)
+}
+
 pub struct GrandSlam {
     pub client: reqwest_middleware::ClientWithMiddleware,
     pub client_info: AnisetteClientInfo,
+    pub capture: GrandSlamCapture,
     url_bag: Dictionary,
 }
 
@@ -34,15 +204,22 @@ impl GrandSlam {
         debug: bool,
         proxy_url: Option<String>,
     ) -> Result<Self, Report> {
+        let capture = GrandSlamCapture::default();
         let client =
-            Self::build_reqwest_client(debug, proxy_url).context("Failed to build HTTP client")?;
+            Self::build_reqwest_client_with_capture(debug, proxy_url, Some(capture.clone()))
+                .context("Failed to build HTTP client")?;
         let base_headers = Self::base_headers(&client_info, false)?;
         let url_bag = Self::fetch_url_bag(&client, base_headers).await?;
         Ok(Self {
             client,
             client_info,
+            capture,
             url_bag,
         })
+    }
+
+    pub fn export_capture_text(&self) -> String {
+        self.capture.export_text()
     }
 
     /// Fetch the URL bag from GrandSlam and cache it
@@ -211,6 +388,14 @@ impl GrandSlam {
         debug: bool,
         proxy_url: Option<String>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
+        Self::build_reqwest_client_with_capture(debug, proxy_url, None)
+    }
+
+    fn build_reqwest_client_with_capture(
+        debug: bool,
+        proxy_url: Option<String>,
+        capture: Option<GrandSlamCapture>,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
         #[cfg(not(feature = "wasm"))]
         let cert = Certificate::from_der(APPLE_ROOT)?;
         #[cfg(not(feature = "wasm"))]
@@ -224,6 +409,11 @@ impl GrandSlam {
         let client = ClientBuilder::new().build()?;
 
         let builder = MwClientBuilder::new(client);
+        let builder = if let Some(capture) = capture {
+            builder.with(GrandSlamCaptureMiddleware { capture })
+        } else {
+            builder
+        };
         let builder = if let Some(proxy_url) = proxy_url {
             builder.with(WasmProxyMiddleware::new(proxy_url))
         } else {
