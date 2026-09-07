@@ -180,6 +180,13 @@ fn format_payload(body: &[u8]) -> String {
             "u",
             "appIdId",
             "applicationGroupList/applicationGroup",
+            "certRequest/name",
+            "certRequest/ownerName",
+            "certRequest/ownerId",
+            "certRequest/certificateId",
+            "certRequest/serialNum",
+            "certRequest/serialNumDecimial",
+            "certRequest/machineId",
         ],
     )
     .unwrap();
