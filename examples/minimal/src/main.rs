@@ -1,3 +1,4 @@
+use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use isideload::{
     anisette::remote_v3::RemoteV3AnisetteProvider,
     auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
@@ -115,6 +116,22 @@ async fn main() {
 
     let mut account = account.unwrap();
 
+    let usbmuxd = UsbmuxdConnection::default().await;
+    if usbmuxd.is_err() {
+        panic!("Failed to connect to usbmuxd: {:?}", usbmuxd.err());
+    }
+    let mut usbmuxd = usbmuxd.unwrap();
+
+    let devs = usbmuxd.get_devices().await.unwrap();
+    if devs.is_empty() {
+        panic!("No devices found");
+    }
+
+    let provider = devs
+        .first()
+        .unwrap()
+        .to_provider(UsbmuxdAddr::from_env_var().unwrap(), "isideload-demo");
+
     let dev_session = DeveloperSession::from_account(&mut account)
         .await
         .expect("Failed to create developer session");
@@ -176,19 +193,29 @@ async fn main() {
         .build();
 
     let result = sideloader
-        .sign_app(
+        .install_app(
+            &provider,
             app_path,
-            None,
             false,
             None::<fn(f32) -> std::future::Ready<()>>,
         )
         .await;
-    match result {
-        Ok(_) => println!("App signed successfully"),
-        Err(e) => panic!("{}", e),
-    }
 
-    let capture = account.grandslam_client.export_capture_text();
-    std::fs::write("grandslam_capture.txt", capture)
+    let capture = format!("\n\n{}", account.grandslam_client.export_capture_text());
+    let mut trace = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("trace.txt")
+        .expect("Failed to open trace.txt for appending");
+
+    std::io::Write::write_all(&mut trace, capture.as_bytes())
         .expect("Failed to write grandslam capture text");
+
+    let final_res = match result {
+        Ok(_) => "\n\nApp installed successfully".to_string(),
+        Err(e) => format!("\n\n{}", e),
+    };
+
+    std::io::Write::write_all(&mut trace, final_res.as_bytes())
+        .expect("Failed to write final result to trace.txt");
 }

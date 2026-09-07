@@ -831,7 +831,7 @@ impl AppleAccount {
             redact_plist(&mut redacted_spd, &keys_to_redact).unwrap();
 
             std::fs::write(
-                "spd.txt",
+                "trace.txt",
                 plist_macro::pretty_print_dictionary(&redacted_spd),
             )
             .context("Failed to write SPD to file")?;

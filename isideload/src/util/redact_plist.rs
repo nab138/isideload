@@ -43,7 +43,6 @@ fn redact_plist_value(value: &mut plist::Dictionary, key_parts: &[&str]) -> Resu
                 salt.to_vec()
             }
         };
-        println!("lets get salty!, {:?}", salt);
         let hash = sha1::Sha1::new()
             .chain(plist_value_to_xml_string(value))
             .chain(salt)
