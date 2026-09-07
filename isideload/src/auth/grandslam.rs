@@ -121,9 +121,8 @@ impl Middleware for GrandSlamCaptureMiddleware {
 }
 
 fn format_payload(body: &[u8]) -> String {
-    let text = String::from_utf8_lossy(body).into_owned();
     let Ok(value) = plist::from_bytes::<plist::Dictionary>(body) else {
-        return text;
+        return "Response not a valid plist".to_string();
     };
 
     let mut redacted_plist = value.clone();
@@ -187,6 +186,16 @@ fn format_payload(body: &[u8]) -> String {
             "certRequest/serialNum",
             "certRequest/serialNumDecimial",
             "certRequest/machineId",
+            "device/deviceId",
+            "device/name",
+            "device/deviceNumber",
+            "devices/deviceId",
+            "devices/name",
+            "devices/deviceNumber",
+            "recoveryUrl",
+            "cantUsePhoneNumberUrl",
+            "dontHaveAccessUrl",
+            "recoveryWebUrl",
         ],
     )
     .unwrap();

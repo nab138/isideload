@@ -822,11 +822,15 @@ impl AppleAccount {
                 "c",
                 "i",
                 "s",
+                "additionalInfo/obfuscatedPhoneNumbers/maskedPhoneNumber",
+                "additionalInfo/phoneNumbers/phoneNumber",
                 "birthDD",
                 "yob",
                 "t/com.apple.gs.idms.pet/token",
                 "t/com.apple.gs.idms.hb/token",
                 "primaryEmail",
+                "lh",
+                "h2ps/pn",
             ];
             redact_plist(&mut redacted_spd, &keys_to_redact).unwrap();
 
