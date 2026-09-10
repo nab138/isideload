@@ -2,7 +2,7 @@ use crate::{
     SideloadError,
     dev::{
         developer_session::DeveloperSession,
-        device_type::{DeveloperDeviceType, dev_url},
+        device_type::{DeveloperDeviceType, apply_platform_to_body, dev_url},
         teams::DeveloperTeam,
     },
 };
@@ -30,9 +30,12 @@ pub trait DevicesApi {
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<Vec<DeveloperDevice>, Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         let devices: Vec<DeveloperDevice> = self
             .developer_session()
@@ -50,11 +53,14 @@ pub trait DevicesApi {
         udid: &str,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<DeveloperDevice, Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
             "name": name,
             "deviceNumber": udid,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         let device: DeveloperDevice = self
             .developer_session()
