@@ -3,6 +3,7 @@ use crate::{
         app_groups::AppGroupsApi,
         app_ids::{AppIdsApi, Profile},
         developer_session::DeveloperSession,
+        device_type::DeveloperDeviceType,
         devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
     },
@@ -10,6 +11,7 @@ use crate::{
         TeamSelection,
         application::{Application, SpecialApp},
         builder::MaxCertsBehavior,
+        bundle::Bundle,
         cert_identity::CertificateIdentity,
         sign,
     },
@@ -19,7 +21,11 @@ use crate::{
 use std::path::PathBuf;
 
 use apple_codesign::ProvisioningProfile;
-use idevice::provider::IdeviceProvider;
+use idevice::{
+    IdeviceService,
+    provider::IdeviceProvider,
+    services::companion_proxy::CompanionProxy,
+};
 use plist::Dictionary;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
@@ -102,6 +108,8 @@ impl Sideloader {
         let main_app_name = app.main_app_name()?;
         let main_app_id_str = format!("{}.{}", main_bundle_id, team.team_id);
         app.update_bundle_id(&main_bundle_id, &main_app_id_str)?;
+        let watch_bundle_ids = app.watch_bundle_ids();
+
         let mut app_ids = app
             .register_app_ids(
                 /*&self.extensions_behavior, */ &mut self.dev_session,
@@ -137,6 +145,10 @@ impl Sideloader {
             .await?;
 
         for app_id in app_ids.iter_mut() {
+            if watch_bundle_ids.contains(&app_id.identifier) {
+                continue;
+            }
+
             app_id
                 .ensure_group_feature(&mut self.dev_session, &team)
                 .await?;
@@ -175,9 +187,15 @@ impl Sideloader {
         {
             let bundle_id = id.identifier.clone();
 
+            let profile_device_type = if watch_bundle_ids.contains(&bundle_id) {
+                Some(DeveloperDeviceType::Watchos)
+            } else {
+                None
+            };
+
             let profile = self
                 .dev_session
-                .download_team_provisioning_profile(&team, &id, None)
+                .download_team_provisioning_profile(&team, &id, profile_device_type)
                 .await
                 .context(format!(
                     "Failed to download provisioning profile for {}",
@@ -196,18 +214,7 @@ impl Sideloader {
 
         info!("Acquired provisioning profile");
 
-        app.bundle.write_info()?;
-        for ext in app.bundle.app_extensions_mut() {
-            ext.write_info()?;
-        }
-        for ext in app.bundle.frameworks_mut() {
-            ext.write_info()?;
-        }
-
-        // isideload_vfs::fs::write(
-        //     app.bundle.bundle_dir.join("embedded.mobileprovision"),
-        //     provisioning_profile.encoded_profile.as_ref(),
-        // )?;
+        app.bundle.write_info_recursive()?;
 
         if let Some(callback) = &progress_callback {
             callback(0.3).await;
@@ -251,6 +258,36 @@ impl Sideloader {
             .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
             .await?;
 
+        let mut provisioning_companion_proxy = CompanionProxy::connect(device_provider)
+            .await
+            .context("Failed to connect to Apple Watch companion proxy")?;
+
+        let paired_watches = provisioning_companion_proxy
+            .get_device_registry()
+            .await
+            .context("Failed to list paired Apple Watch devices")?;
+
+        for watch_udid in paired_watches {
+            let watch_name = provisioning_companion_proxy
+                .get_value(&watch_udid, "DeviceName")
+                .await
+                .ok()
+                .and_then(|value| value.as_string().map(str::to_string))
+                .unwrap_or_else(|| "Apple Watch".to_string());
+
+            self.dev_session
+                .ensure_device_registered(
+                    &team,
+                    &watch_name,
+                    &watch_udid,
+                    Some(DeveloperDeviceType::Watchos),
+                )
+                .await
+                .context("Failed to register paired Apple Watch as a development device")?;
+        }
+
+        drop(provisioning_companion_proxy);
+
         let (signed_app_path, special_app) = self
             .sign_app(
                 app_path,
@@ -268,6 +305,23 @@ impl Sideloader {
         .await
         .context("Failed to install app on device")?;
 
+        let signed_bundle = Bundle::new(signed_app_path.clone())?;
+        let watch_apps = signed_bundle.watch_apps().to_vec();
+
+        if !watch_apps.is_empty() {
+            info!("Installing Apple Watch companion app...");
+            crate::sideload::watch_install::install_watch_apps(
+                device_provider,
+                &watch_apps,
+                &self.machine_name,
+                |progress| {
+                    info!("Installing Apple Watch app: {}%", progress);
+                },
+            )
+            .await
+            .context("Failed to install Apple Watch companion app")?;
+        }
+
         if self.delete_app_after_install
             && let Err(e) = isideload_vfs::fs::remove_dir_all(signed_app_path)
         {
@@ -277,7 +331,7 @@ impl Sideloader {
         Ok(special_app)
     }
 
-    /// Get the developer team according to the configured team selection behavior
+    /// Get the developer team according to the configured team selection behavior.
     pub async fn get_team(&mut self) -> Result<DeveloperTeam, Report> {
         if let Some(team) = &self.team {
             return Ok(team.clone());

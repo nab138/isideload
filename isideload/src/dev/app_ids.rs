@@ -1,7 +1,7 @@
 use crate::{
     dev::{
         developer_session::DeveloperSession,
-        device_type::{DeveloperDeviceType, dev_url},
+        device_type::{DeveloperDeviceType, apply_platform_to_body, dev_url},
         teams::DeveloperTeam,
     },
     util::plist::{PlistDataExtract, SensitivePlistAttachment},
@@ -63,11 +63,14 @@ pub trait AppIdsApi {
         identifier: &str,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<AppId, Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
             "identifier": identifier,
             "name": name,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         let app_id: AppId = self
             .developer_session()
@@ -83,9 +86,12 @@ pub trait AppIdsApi {
         team: &DeveloperTeam,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<ListAppIdsResponse, Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         let response: Value = self
             .developer_session()
@@ -115,10 +121,13 @@ pub trait AppIdsApi {
         features: Dictionary,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<AppId, Report> {
+        let device_type = device_type.into();
+
         let mut body = plist!(dict {
             "teamId": &team.team_id,
             "appIdId": &app_id.app_id_id
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         for (key, value) in features {
             body.insert(key.clone(), value.clone());
@@ -137,10 +146,13 @@ pub trait AppIdsApi {
         app_id_id: &str,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<(), Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
             "appIdId": app_id_id,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         self.developer_session()
             .send_dev_request_no_response(&dev_url("deleteAppId", device_type), body)
@@ -156,10 +168,13 @@ pub trait AppIdsApi {
         app_id: &AppId,
         device_type: impl Into<Option<DeveloperDeviceType>> + Send,
     ) -> Result<Profile, Report> {
-        let body = plist!(dict {
+        let device_type = device_type.into();
+
+        let mut body = plist!(dict {
             "teamId": &team.team_id,
             "appIdId": &app_id.app_id_id,
         });
+        apply_platform_to_body(&mut body, &device_type);
 
         let response: Profile = self
             .developer_session()

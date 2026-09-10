@@ -79,5 +79,13 @@ where
         callback(0.5).await;
     }
 
+    // apple-codesign currently discovers nested bundles under Frameworks/ and
+    // PlugIns/, but not embedded watchOS applications under Watch/.
+    // Sign each Watch app explicitly first so it receives its own provisioning
+    // profile, entitlements, executable signature, and _CodeSignature.
+    for watch_app in app.bundle.watch_apps() {
+        sign_bundle(&watch_app.bundle_dir, &settings)?;
+    }
+
     Ok(sign_bundle(&app.bundle.bundle_dir, &settings)?)
 }
