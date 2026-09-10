@@ -178,30 +178,63 @@ impl Application {
         Ok(())
     }
 
+    fn unregistered_bundles(&self, app_ids: &[AppId]) -> Vec<&Bundle> {
+        std::iter::once(&self.bundle)
+            .chain(self.bundle.app_extensions())
+            .filter(|bundle| {
+                let identifier = bundle.bundle_identifier().unwrap_or("");
+                !app_ids
+                    .iter()
+                    .any(|app_id| app_id.identifier.eq_ignore_ascii_case(identifier))
+            })
+            .collect()
+    }
+
+    fn resolve_app_ids(&self, app_ids: &[AppId]) -> Result<Vec<AppId>, Report> {
+        std::iter::once(&self.bundle)
+            .chain(self.bundle.app_extensions())
+            .map(|bundle| -> Result<AppId, Report> {
+                let identifier = bundle.bundle_identifier().unwrap_or("");
+                Ok(app_ids
+                    .iter()
+                    .find(|app_id| app_id.identifier.eq_ignore_ascii_case(identifier))
+                    .cloned()
+                    .ok_or_report()
+                    .context(format!(
+                        "Registered app ID not found for bundle {}",
+                        identifier
+                    ))?)
+            })
+            .collect()
+    }
+
+    pub(crate) fn canonicalize_bundle_ids(&mut self, app_ids: &[AppId]) -> Result<(), Report> {
+        // Resolve every bundle before mutating any of them. Apple treats IDs as
+        // case-insensitive, but the signer's profile/entitlement maps use exact keys.
+        let resolved = self.resolve_app_ids(app_ids)?;
+        self.bundle.set_bundle_identifier(&resolved[0].identifier);
+        for (extension, app_id) in self
+            .bundle
+            .app_extensions_mut()
+            .iter_mut()
+            .zip(resolved.iter().skip(1))
+        {
+            extension.set_bundle_identifier(&app_id.identifier);
+        }
+        Ok(())
+    }
+
     pub async fn register_app_ids(
         &self,
         //mode: &ExtensionsBehavior,
         dev_session: &mut DeveloperSession,
         team: &DeveloperTeam,
     ) -> Result<Vec<AppId>, Report> {
-        let extension_refs: Vec<_> = self.bundle.app_extensions().iter().collect();
-        let mut bundles_with_app_id = vec![&self.bundle];
-        bundles_with_app_id.extend(extension_refs);
-
         let list_app_ids_response = dev_session
             .list_app_ids(team, None)
             .await
             .context("Failed to list app IDs for the developer team")?;
-        let app_ids_to_register = bundles_with_app_id
-            .iter()
-            .filter(|bundle| {
-                let bundle_id = bundle.bundle_identifier().unwrap_or("");
-                !list_app_ids_response
-                    .app_ids
-                    .iter()
-                    .any(|app_id| app_id.identifier == bundle_id)
-            })
-            .collect::<Vec<_>>();
+        let app_ids_to_register = self.unregistered_bundles(&list_app_ids_response.app_ids);
 
         if let Some(available) = list_app_ids_response.available_quantity {
             if available < 0 {
@@ -234,15 +267,7 @@ impl Application {
             dev_session.add_app_id(team, name, id, None).await?;
         }
         let list_app_id_response = dev_session.list_app_ids(team, None).await?;
-        let app_ids: Vec<_> = list_app_id_response
-            .app_ids
-            .into_iter()
-            .filter(|app_id| {
-                bundles_with_app_id
-                    .iter()
-                    .any(|bundle| app_id.identifier == bundle.bundle_identifier().unwrap_or(""))
-            })
-            .collect();
+        let app_ids = self.resolve_app_ids(&list_app_id_response.app_ids)?;
 
         info!("Registered app IDs");
         Ok(app_ids)
@@ -330,5 +355,168 @@ impl std::fmt::Display for SpecialApp {
             SpecialApp::AltStore => write!(f, "AltStore"),
             SpecialApp::StikStore => write!(f, "StikStore"),
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod app_id_tests {
+    use super::*;
+    use plist::{Dictionary, Value};
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    struct Fixture {
+        root: PathBuf,
+        app: Application,
+    }
+
+    impl Fixture {
+        fn new(main_id: &str, extension_ids: &[&str]) -> Self {
+            let root = std::env::temp_dir()
+                .join(format!("isideload-app-id-test-{}", uuid::Uuid::new_v4()));
+            let main = root.join("Video.app");
+            write_bundle(&main, main_id);
+            for (index, identifier) in extension_ids.iter().enumerate() {
+                write_bundle(
+                    &main.join("PlugIns").join(format!("Extension{index}.appex")),
+                    identifier,
+                );
+            }
+            Self {
+                app: Application::new(main).expect("load fixture"),
+                root,
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn write_bundle(path: &Path, identifier: &str) {
+        std::fs::create_dir_all(path).expect("create fixture directory");
+        let mut info = Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".to_string(),
+            Value::String(identifier.to_string()),
+        );
+        info.insert(
+            "CFBundleName".to_string(),
+            Value::String("Video".to_string()),
+        );
+        plist::to_file_xml(path.join("Info.plist"), &info).expect("write fixture plist");
+    }
+
+    fn registered(identifier: &str) -> AppId {
+        AppId {
+            app_id_id: format!("registered-{identifier}"),
+            identifier: identifier.to_string(),
+            name: "Video".to_string(),
+            features: Dictionary::new(),
+            expiration_date: None,
+        }
+    }
+
+    #[test]
+    fn extension_case_difference_reuses_registration_and_exact_profile_key() {
+        let main = "com.example.video.TEAM123456";
+        let requested = "com.example.video.TEAM123456.OpenYouTube.Extension";
+        let canonical = "com.example.video.TEAM123456.OpenYoutube.Extension";
+        let mut fixture = Fixture::new(main, &[requested]);
+        let app_ids = vec![registered(main), registered(canonical)];
+
+        // A casing difference must not consume another App ID slot or call addAppId.
+        assert!(fixture.app.unregistered_bundles(&app_ids).is_empty());
+        let resolved = fixture.app.resolve_app_ids(&app_ids).expect("resolve IDs");
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[1].app_id_id, app_ids[1].app_id_id);
+
+        fixture
+            .app
+            .canonicalize_bundle_ids(&resolved)
+            .expect("canonicalize");
+        let extension = &fixture.app.bundle.app_extensions()[0];
+        assert_eq!(extension.bundle_identifier(), Some(canonical));
+
+        // sign.rs builds maps using Apple's returned identifiers as exact keys.
+        let profile_keys: BTreeMap<_, _> = resolved
+            .iter()
+            .map(|id| (id.identifier.as_str(), id.app_id_id.as_str()))
+            .collect();
+        assert!(profile_keys.contains_key(extension.bundle_identifier().unwrap()));
+
+        extension.write_info().expect("write canonical identifier");
+        let reloaded = Bundle::new(extension.bundle_dir.clone()).expect("reload plist");
+        assert_eq!(reloaded.bundle_identifier(), Some(canonical));
+    }
+
+    #[test]
+    fn main_and_extension_use_registered_spelling_without_lowercasing() {
+        let mut fixture = Fixture::new(
+            "com.example.video.TEAM123456",
+            &["com.example.video.TEAM123456.ShareExtension"],
+        );
+        let main = "com.Example.Video.TEAM123456";
+        let extension = "com.Example.Video.TEAM123456.shareExtension";
+        // Response order need not match bundle order.
+        let app_ids = vec![registered(extension), registered(main)];
+
+        assert!(fixture.app.unregistered_bundles(&app_ids).is_empty());
+        fixture
+            .app
+            .canonicalize_bundle_ids(&app_ids)
+            .expect("canonicalize");
+        assert_eq!(fixture.app.main_bundle_id().unwrap(), main);
+        assert_eq!(
+            fixture.app.bundle.app_extensions()[0].bundle_identifier(),
+            Some(extension)
+        );
+        assert!(
+            app_ids
+                .iter()
+                .any(|id| id.identifier == fixture.app.main_bundle_id().unwrap())
+        );
+    }
+
+    #[test]
+    fn genuinely_new_identifier_is_still_registered() {
+        let main = "com.example.video.TEAM123456";
+        let fresh = "com.example.video.TEAM123456.OpenYouTube2.Extension";
+        let fixture = Fixture::new(main, &[fresh]);
+        let app_ids = vec![
+            registered(main),
+            registered("com.example.video.TEAM123456.OpenYoutube.Extension"),
+        ];
+        let missing = fixture.app.unregistered_bundles(&app_ids);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].bundle_identifier(), Some(fresh));
+    }
+
+    #[test]
+    fn missing_registration_fails_before_mutating_bundles() {
+        let main = "com.example.video.TEAM123456";
+        let extension = "com.example.video.TEAM123456.ShareExtension";
+        let mut fixture = Fixture::new(main, &[extension]);
+        let only_main = vec![registered("com.Example.Video.TEAM123456")];
+
+        assert!(fixture.app.canonicalize_bundle_ids(&only_main).is_err());
+        assert_eq!(fixture.app.main_bundle_id().unwrap(), main);
+        assert_eq!(
+            fixture.app.bundle.app_extensions()[0].bundle_identifier(),
+            Some(extension)
+        );
+    }
+
+    #[test]
+    fn exact_matches_and_unrelated_registered_ids_are_preserved() {
+        let main = "com.example.video.TEAM123456";
+        let fixture = Fixture::new(main, &[]);
+        let app_ids = vec![registered("com.unrelated.app"), registered(main)];
+        let resolved = fixture.app.resolve_app_ids(&app_ids).expect("resolve");
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].identifier, main);
+        assert!(fixture.app.unregistered_bundles(&app_ids).is_empty());
     }
 }
