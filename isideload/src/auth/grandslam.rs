@@ -10,13 +10,19 @@ use reqwest::{
 };
 use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::prelude::*;
-use tracing::debug;
+use std::time::Duration;
+use tracing::{debug, warn};
 
 #[cfg(not(feature = "wasm"))]
 use crate::sideload::cert_identity::APPLE_ROOT;
 use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
 
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
+
+/// How many times a GrandSlam plist request is attempted before giving up.
+const MAX_GSA_ATTEMPTS: u32 = 5;
+/// Base delay for the exponential backoff between retries (0.5s, 1s, 2s, 4s).
+const GSA_RETRY_BASE_DELAY_MS: u64 = 500;
 
 pub struct GrandSlam {
     pub client: reqwest_middleware::ClientWithMiddleware,
@@ -134,24 +140,74 @@ impl GrandSlam {
         Ok(builder)
     }
 
+    /// Send a plist request to GrandSlam.
+    ///
+    /// Server errors are retried with exponential backoff, and the response is checked for a
+    /// plausible plist body before it is handed to the parser, so an HTML error page reports its
+    /// status code instead of an opaque "unknown tag html on line 1".
     pub async fn plist_request(
         &self,
         url: &str,
         body: &Dictionary,
         additional_headers: Option<HeaderMap>,
     ) -> Result<Dictionary, Report> {
-        let resp = self
-            .post(url)?
-            .headers(additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new))
-            .body(plist_to_xml_string(body))
-            .send()
-            .await
-            .context("Failed to send grandslam request")?
-            .error_for_status()
-            .context("Received error response from grandslam")?
-            .text()
-            .await
-            .context("Failed to read grandslam response as text")?;
+        let body_xml = plist_to_xml_string(body);
+        let extra_headers = additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new);
+
+        let mut attempt: u32 = 0;
+
+        let resp = loop {
+            attempt += 1;
+
+            let response = self
+                .client
+                .post(url)
+                .headers(Self::base_headers(&self.client_info, false)?)
+                .headers(extra_headers.clone())
+                .body(body_xml.clone())
+                .send()
+                .await
+                .context("Failed to send grandslam request")?;
+
+            let status = response.status();
+
+            if status.is_server_error() && attempt < MAX_GSA_ATTEMPTS {
+                let delay = Duration::from_millis(GSA_RETRY_BASE_DELAY_MS << (attempt - 1));
+                warn!(
+                    "GrandSlam returned HTTP {} (attempt {}/{}), retrying in {:?}",
+                    status.as_u16(),
+                    attempt,
+                    MAX_GSA_ATTEMPTS,
+                    delay
+                );
+                Self::backoff(delay).await;
+                continue;
+            }
+
+            let content_type = response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("<none>")
+                .to_string();
+
+            let text = response
+                .text()
+                .await
+                .context("Failed to read grandslam response as text")?;
+
+            if !status.is_success() || !Self::looks_like_plist(&content_type, &text) {
+                return Err(report!(
+                    "GrandSlam returned an unexpected response: HTTP {} (Content-Type: {}) after {} attempt(s)",
+                    status.as_u16(),
+                    content_type,
+                    attempt
+                )
+                .attach(Self::body_snippet(&text)));
+            }
+
+            break text;
+        };
 
         let dict: Dictionary = plist::from_bytes(resp.as_bytes())
             .context("Failed to parse grandslam response plist")
@@ -167,6 +223,42 @@ impl GrandSlam {
             })?;
 
         Ok(response_plist)
+    }
+
+    /// Sleep between retries. `tokio::time` is unavailable on wasm, where the retry simply
+    /// happens immediately on a new connection.
+    #[allow(unused_variables)]
+    async fn backoff(delay: Duration) {
+        #[cfg(not(feature = "wasm"))]
+        tokio::time::sleep(delay).await;
+    }
+
+    /// Cheap sanity check that the body could be a plist at all. Apple serves HTML error pages
+    /// from the same endpoint, and feeding those to the plist parser hides the real failure.
+    fn looks_like_plist(content_type: &str, body: &str) -> bool {
+        let content_type = content_type.to_ascii_lowercase();
+        if content_type.contains("html") {
+            return false;
+        }
+
+        let trimmed = body.trim_start();
+        let head = trimmed
+            .chars()
+            .take(64)
+            .collect::<String>()
+            .to_ascii_lowercase();
+        !(head.starts_with("<!doctype html") || head.starts_with("<html"))
+    }
+
+    /// First 512 characters of a response body, flattened onto one line, for error reports.
+    fn body_snippet(body: &str) -> String {
+        let flattened = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        let snippet = flattened.chars().take(512).collect::<String>();
+        if flattened.chars().count() > 512 {
+            format!("Body: {snippet}...")
+        } else {
+            format!("Body: {snippet}")
+        }
     }
 
     fn base_headers(
@@ -252,5 +344,133 @@ impl GrandSlamErrorChecker for Dictionary {
         }
 
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    const HTML_503: &str = "<html><head><title>503 Service Temporarily Unavailable</title></head>\
+         <body>Service Temporarily Unavailable</body></html>";
+    const VALID_PLIST: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>Response</key><dict><key>ec</key><integer>0</integer></dict></dict></plist>"#;
+
+    fn test_grandslam() -> GrandSlam {
+        // reqwest is built with `rustls-no-provider`, so a provider has to be installed before
+        // any Client can be constructed. Binaries do this in main(); tests have to do it here.
+        static CRYPTO_PROVIDER: std::sync::Once = std::sync::Once::new();
+        CRYPTO_PROVIDER.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+
+        GrandSlam {
+            client: GrandSlam::build_reqwest_client(false, None).unwrap(),
+            client_info: AnisetteClientInfo {
+                client_info: "<test>".to_string(),
+                user_agent: "test".to_string(),
+            },
+            url_bag: Dictionary::new(),
+        }
+    }
+
+    /// Serves one canned response per connection and counts the requests it received. The
+    /// response asks for the connection to be closed, so one accepted connection is exactly one
+    /// request whether or not the client pools connections.
+    async fn spawn_server(
+        status_line: &'static str,
+        content_type: &'static str,
+        body: &'static str,
+    ) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let counter = requests.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                counter.fetch_add(1, Ordering::SeqCst);
+
+                let mut buf = [0u8; 8192];
+                let _ = socket.read(&mut buf).await;
+
+                let response = format!(
+                    "HTTP/1.1 {status_line}\r\nContent-Type: {content_type}\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+            }
+        });
+
+        (format!("http://{addr}/GsService2"), requests)
+    }
+
+    #[tokio::test]
+    async fn retries_an_html_503_up_to_the_attempt_limit() {
+        let (url, requests) =
+            spawn_server("503 Service Temporarily Unavailable", "text/html", HTML_503).await;
+
+        let error = test_grandslam()
+            .plist_request(&url, &Dictionary::new(), None)
+            .await
+            .expect_err("an HTML 503 must not be reported as a successful response");
+        let rendered = format!("{error:?}");
+
+        assert!(
+            rendered.contains("503"),
+            "error should name the status code, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("Service Temporarily Unavailable"),
+            "error should carry a snippet of the HTML body, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("unknown tag"),
+            "error should not be a raw plist parse failure, got: {rendered}"
+        );
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            MAX_GSA_ATTEMPTS as usize,
+            "a 5xx must be retried up to the attempt limit"
+        );
+    }
+
+    #[tokio::test]
+    async fn parses_a_plist_response() {
+        let (url, requests) = spawn_server("200 OK", "text/x-xml-plist", VALID_PLIST).await;
+
+        let response = test_grandslam()
+            .plist_request(&url, &Dictionary::new(), None)
+            .await
+            .expect("a valid plist should parse");
+
+        assert_eq!(response.get_signed_integer("ec").unwrap(), 0);
+        assert_eq!(requests.load(Ordering::SeqCst), 1, "no retry expected");
+    }
+
+    #[tokio::test]
+    async fn rejects_html_served_with_a_200() {
+        let (url, requests) = spawn_server("200 OK", "text/html", HTML_503).await;
+
+        let error = test_grandslam()
+            .plist_request(&url, &Dictionary::new(), None)
+            .await
+            .expect_err("HTML must be rejected even when the status is 200");
+
+        assert!(format!("{error:?}").contains("text/html"));
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            1,
+            "a 2xx must not be retried"
+        );
     }
 }

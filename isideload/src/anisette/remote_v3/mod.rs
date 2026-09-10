@@ -161,7 +161,13 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
         Ok(AnisetteClientInfo {
-            client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.dt.Xcode/25183.54.10)>".to_string(),
+            // Apple's GSA edge answers every request whose X-Mme-Client-Info names
+            // com.apple.dt.Xcode with an HTML 503 page, matched on that prefix: appending a
+            // character to the identifier still gets blocked, while com.apple.akd or any other
+            // identifier is served normally. Dropping the trailing "(com.apple.dt.Xcode/...)"
+            // is enough to reach the backend again. The Xcode flow is still identified by the
+            // X-Apple-App-Info and X-Xcode-Version headers, neither of which is blocked.
+            client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1>".to_string(),
             user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
         })
     }
