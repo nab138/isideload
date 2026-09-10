@@ -1,0 +1,11 @@
+[package]
+name = "login-check"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+isideload = { path = "../../isideload" }
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
