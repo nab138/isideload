@@ -68,6 +68,9 @@ web-time = "1"
 # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.
 # It has been fixed already but I am waiting for a new release before I can update the dependency.
 # Using native-tls avoids the issue.
+[dev-dependencies]
+tokio = { version = "1.49", features = ["net", "io-util", "macros", "rt-multi-thread"] }
+
 [target.'cfg(windows)'.dependencies]
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "gzip", "native-tls", "http2", "charset", "system-proxy"] }
 
