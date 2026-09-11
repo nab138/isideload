@@ -2,10 +2,7 @@ use idevice::{
     Idevice, IdeviceService,
     pairing_file::PairingFile,
     provider::IdeviceProvider,
-    services::{
-        companion_proxy::CompanionProxy, installation_proxy::InstallationProxyClient,
-        lockdown::LockdownClient,
-    },
+    services::{companion_proxy::CompanionProxy, lockdown::LockdownClient},
 };
 use plist::{Dictionary, Value};
 use rootcause::{option_ext::OptionExt, prelude::*};
@@ -19,10 +16,12 @@ use crate::{SideloadError as Error, sideload::bundle::Bundle};
 
 const WATCH_LOCKDOWN_PORT: u16 = 62078;
 const WATCH_LOCKDOWN_SERVICE: &str = "com.apple.mobile.lockdownd";
-const WATCH_INSTALL_PROXY_SERVICE: &str = "com.apple.mobile.installation_proxy";
 const WATCH_ZIP_SERVICE: &str = "com.apple.streaming_zip_conduit";
 const WATCH_FORWARD_CONNECT_ATTEMPTS: usize = 20;
 const WATCH_FORWARD_CONNECT_DELAY_MS: u64 = 50;
+const WATCH_INSTALL_ATTEMPTS: usize = 7;
+const WATCH_INSTALL_INITIAL_RETRY_DELAY_MS: u64 = 400;
+const WATCH_INSTALL_MAX_RETRY_DELAY_MS: u64 = 2500;
 const CENTRAL_DIRECTORY_HEADER: &[u8] = &[0x50, 0x4b, 0x01, 0x02];
 const ZIP_EXTRA: &[u8] = &[
     0x55, 0x54, 0x0d, 0x00, 0x07, 0xf3, 0xa2, 0xec, 0x60, 0xf6, 0xa2, 0xec, 0x60, 0xf3,
@@ -30,12 +29,12 @@ const ZIP_EXTRA: &[u8] = &[
     0x14, 0x00, 0x00, 0x00,
 ];
 
-/// Install already-signed embedded Watch apps directly on the paired Apple Watch.
+/// Install or update already-signed embedded Watch apps directly on the paired Apple Watch.
 ///
-/// iPhone installation can leave an embedded Watch app as a process-scoped placeholder.
-/// watchOS exposes `streaming_zip_conduit`, which accepts the signed Watch `.app` directly
-/// and finalizes it as a real installed application. Before streaming, we best-effort remove
-/// any existing placeholder/previous installation for the same Watch bundle identifier.
+/// iPhone installation can temporarily leave a process-scoped install coordinator for the
+/// embedded Watch app. Do not uninstall the existing Watch app during a normal update: stream
+/// the signed bundle directly, and if watchOS reports the known IXErrorDomain Code=48 coordinator
+/// race, retry with a fresh `streaming_zip_conduit` connection after a bounded backoff.
 pub async fn install_watch_apps(
     device_provider: &impl IdeviceProvider,
     watch_apps: &[Bundle],
@@ -94,21 +93,7 @@ pub async fn install_watch_apps(
             .context("Failed to start Apple Watch lockdown session")?;
 
         for watch_app in watch_apps {
-            let bundle_id = watch_app
-                .bundle_identifier()
-                .ok_or_report()
-                .context("Watch app is missing CFBundleIdentifier")?;
-
-            remove_existing_watch_app(
-                device_provider,
-                &mut watch_lockdown,
-                &watch_pairing,
-                legacy,
-                bundle_id,
-            )
-            .await?;
-
-            install_watch_app_zip_conduit(
+            install_watch_app_with_retry(
                 device_provider,
                 &mut watch_lockdown,
                 &watch_pairing,
@@ -184,78 +169,69 @@ async fn connect_forwarded_watch_port(
 
     unreachable!("bounded forwarded-port retry loop must return")
 }
-async fn remove_existing_watch_app(
+
+async fn install_watch_app_with_retry(
     device_provider: &impl IdeviceProvider,
     watch_lockdown: &mut LockdownClient,
     watch_pairing: &PairingFile,
     legacy: bool,
-    bundle_id: &str,
+    watch_app: &Bundle,
+    progress_callback: &(impl Fn(u64) + Send + Sync),
 ) -> Result<(), Report> {
-    let (remote_port, ssl) = watch_lockdown
-        .start_service(WATCH_INSTALL_PROXY_SERVICE)
-        .await
-        .map_err(Error::IdeviceError)
-        .context("Failed to start Apple Watch installation proxy")?;
+    let bundle_id = watch_app
+        .bundle_identifier()
+        .ok_or_report()
+        .context("Watch app is missing CFBundleIdentifier")?;
+    let mut retry_delay_ms = WATCH_INSTALL_INITIAL_RETRY_DELAY_MS;
 
-    let forwarded_port = {
-        let mut companion_proxy = CompanionProxy::connect(device_provider)
-            .await
-            .map_err(Error::IdeviceError)
-            .context("Failed to connect to fresh Apple Watch companion proxy for installation proxy forwarding")?;
-
-        companion_proxy
-            .start_forwarding_service_port(
-                remote_port,
-                Some(WATCH_INSTALL_PROXY_SERVICE),
-                None,
-            )
-            .await
-            .map_err(Error::IdeviceError)
-            .context("Failed to forward Apple Watch installation proxy")?
-    };
-
-    let result = async {
-        let mut connection = connect_forwarded_watch_port(
+    for attempt in 1..=WATCH_INSTALL_ATTEMPTS {
+        match install_watch_app_zip_conduit(
             device_provider,
-            forwarded_port,
-            "installation proxy",
+            watch_lockdown,
+            watch_pairing,
+            legacy,
+            watch_app,
+            progress_callback,
         )
-        .await?;
-
-        if ssl {
-            connection
-                .start_session(watch_pairing, legacy)
-                .await
-                .map_err(Error::IdeviceError)
-                .context("Failed to secure Apple Watch installation proxy connection")?;
-        }
-
-        let mut install_proxy = InstallationProxyClient::new(connection);
-        match install_proxy.uninstall(bundle_id, None).await {
-            Ok(()) => info!("Removed existing Apple Watch app/placeholder: {bundle_id}"),
-            Err(e) => {
-                // A missing bundle is expected on a first installation. If a stale coordinator
-                // still exists, zip_conduit will return the real watchOS error below.
-                info!("No removable Apple Watch app/placeholder for {bundle_id}: {e}");
+        .await
+        {
+            Ok(()) => {
+                if attempt > 1 {
+                    info!(
+                        "Apple Watch app {bundle_id} installed/updated after {attempt} attempts"
+                    );
+                }
+                return Ok(());
             }
-        }
-
-        Ok(())
-    }
-    .await;
-
-    match CompanionProxy::connect(device_provider).await {
-        Ok(mut companion_proxy) => {
-            if let Err(e) = companion_proxy.stop_forwarding_service_port(remote_port).await {
-                warn!("Failed to stop Apple Watch installation proxy forwarding: {e}");
+            Err(error)
+                if is_watch_coordinator_conflict(&error) && attempt < WATCH_INSTALL_ATTEMPTS =>
+            {
+                warn!(
+                    "Apple Watch install coordinator still busy for {bundle_id} (attempt {attempt}/{WATCH_INSTALL_ATTEMPTS}); retrying with a fresh streaming_zip_conduit connection in {retry_delay_ms} ms: {error:?}"
+                );
+                tokio::time::sleep(Duration::from_millis(retry_delay_ms)).await;
+                retry_delay_ms = retry_delay_ms
+                    .saturating_mul(2)
+                    .min(WATCH_INSTALL_MAX_RETRY_DELAY_MS);
             }
-        }
-        Err(e) => {
-            warn!("Failed to open fresh Apple Watch companion proxy to stop installation proxy forwarding: {e}");
+            Err(error) => {
+                warn!(
+                    "Apple Watch install/update failed for {bundle_id} on attempt {attempt}/{WATCH_INSTALL_ATTEMPTS}; the existing Watch app was not explicitly uninstalled"
+                );
+                return Err(error);
+            }
         }
     }
 
-    result
+    unreachable!("bounded Watch install retry loop must return")
+}
+
+fn is_watch_coordinator_conflict(error: &Report) -> bool {
+    let message = format!("{error:?}\n{error}");
+    message.contains("IXErrorDomain Code=48")
+        || message.contains("A coordinated install exists for this identity")
+        || (message.contains("process-scoped")
+            && message.contains("scoped to a different process"))
 }
 
 async fn install_watch_app_zip_conduit(
