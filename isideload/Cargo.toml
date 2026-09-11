@@ -23,7 +23,7 @@ fs-storage = []
 # Once that becomes stable, hopefuly duplicate dependencies should clean up.\
 # Until then, I will wince in pain every time I see how long the output of cargo tree -d is.
 [dependencies]
-idevice = { version = "0.1.61", optional = true, default-features = false, features = ["ring", "afc", "installation_proxy", "remote_pairing", "rsd"]}
+idevice = { version = "0.1.61", optional = true, default-features = false, features = ["ring", "afc", "installation_proxy", "remote_pairing", "rsd", "companion_proxy", "pair"]}
 plist = "1.8"
 plist-macro = "0.1.4"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "gzip", "rustls-no-provider", "http2", "charset", "system-proxy"] }
@@ -47,7 +47,7 @@ cbc = { version = "0.2.0", features = ["alloc"] }
 aes = "0.9.0"
 aes-gcm = "0.11.0-rc.3"
 rsa = { version = "0.9.10" }
-tokio = { version = "1.49" }
+tokio = { version = "1.49", features = ["time"] }
 keyring = { version = "3.6.3", features = ["apple-native", "linux-native-sync-persistent", "windows-native"], optional = true }
 rcgen = { version = "0.14.7", default-features = false, features = ["ring", "pem"] }
 p12-keystore = { version = "0.3.0-rc4", package = "isideload-p12-keystore" }
