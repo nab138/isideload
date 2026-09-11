@@ -4,4 +4,5 @@ pub mod certificates;
 pub mod developer_session;
 pub mod device_type;
 pub mod devices;
+pub mod provisioning_profiles;
 pub mod teams;

@@ -1,9 +1,10 @@
 use crate::{
     dev::{
         app_groups::AppGroupsApi,
-        app_ids::{AppIdsApi, Profile},
+        app_ids::AppIdsApi,
         developer_session::DeveloperSession,
-        devices::DevicesApi,
+        devices::{DeveloperDevice, DevicesApi},
+        provisioning_profiles::{Profile, ProfilesApi},
         teams::{DeveloperTeam, TeamsApi},
     },
     sideload::{
@@ -71,6 +72,7 @@ impl Sideloader {
         // this will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
         progress_callback: Option<F>,
+        device: &DeveloperDevice,
     ) -> Result<(PathBuf, Option<SpecialApp>), Report>
     where
         F: Fn(f32) -> Fut,
@@ -162,33 +164,40 @@ impl Sideloader {
             .await
             .context("Failed to modify app bundle")?;
 
+        // let main_provisioning_profile = self
+        //     .dev_session
+        //     .download_provisioning_profile(&team, "XD2TM2LFJ7", None)
+        //     .await?;
+
         let main_provisioning_profile = self
             .dev_session
-            .download_team_provisioning_profile(&team, &main_app_id, None)
+            .create_provisioning_profile(&team, &cert_identity, &main_app_id, device, None)
             .await?;
+
+        println!("{:?}", main_provisioning_profile);
 
         let mut provisioning_profiles: Vec<(String, Profile, Dictionary)> = Vec::new();
 
-        for id in app_ids
-            .into_iter()
-            .filter(|id| id.identifier != main_app_id.identifier)
-        {
-            let bundle_id = id.identifier.clone();
+        // for id in app_ids
+        //     .into_iter()
+        //     .filter(|id| id.identifier != main_app_id.identifier)
+        // {
+        //     let bundle_id = id.identifier.clone();
 
-            let profile = self
-                .dev_session
-                .download_team_provisioning_profile(&team, &id, None)
-                .await
-                .context(format!(
-                    "Failed to download provisioning profile for {}",
-                    bundle_id
-                ))?;
+        //     let profile = self
+        //         .dev_session
+        //         .download_team_provisioning_profile(&team, &id, None)
+        //         .await
+        //         .context(format!(
+        //             "Failed to download provisioning profile for {}",
+        //             bundle_id
+        //         ))?;
 
-            let parsed_profile = ProvisioningProfile::parse(profile.encoded_profile.as_ref())?;
-            let entitlements = parsed_profile.entitlements().clone();
+        //     let parsed_profile = ProvisioningProfile::parse(profile.encoded_profile.as_ref())?;
+        //     let entitlements = parsed_profile.entitlements().clone();
 
-            provisioning_profiles.push((bundle_id, profile, entitlements));
-        }
+        //     provisioning_profiles.push((bundle_id, profile, entitlements));
+        // }
 
         if let Some(callback) = &progress_callback {
             callback(0.2).await;
@@ -247,7 +256,8 @@ impl Sideloader {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
         let team = self.get_team().await?;
-        self.dev_session
+        let device = self
+            .dev_session
             .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
             .await?;
 
@@ -257,6 +267,7 @@ impl Sideloader {
                 Some(team),
                 increased_memory_limit,
                 progress_callback,
+                &device,
             )
             .await?;
 

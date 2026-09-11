@@ -8,7 +8,7 @@ use plist::Dictionary;
 use rootcause::prelude::*;
 
 use crate::{
-    dev::{app_ids::Profile, teams::DeveloperTeam},
+    dev::{provisioning_profiles::Profile, teams::DeveloperTeam},
     sideload::{
         application::{Application, SpecialApp},
         cert_identity::CertificateIdentity,

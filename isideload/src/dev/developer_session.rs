@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use plist::Dictionary;
-use plist_macro::{plist, plist_to_xml_string};
+use plist_macro::{plist, plist_to_xml_string, pretty_print_dictionary};
 use reqwest::header::{HeaderMap, HeaderValue};
 use rootcause::prelude::*;
 use serde::de::DeserializeOwned;
@@ -27,8 +27,8 @@ pub use super::teams::*;
 
 #[derive(Clone)]
 pub struct DeveloperSession {
-    token: AppToken,
-    adsid: String,
+    pub token: AppToken,
+    pub adsid: String,
     client: Arc<GrandSlam>,
     anisette_generator: AnisetteDataGenerator,
 }
@@ -122,6 +122,11 @@ impl DeveloperSession {
 
         let dict: Dictionary = plist::from_bytes(text.as_bytes())
             .context("Failed to parse developer request plist")?;
+
+        // if url includes profile, print the response for debugging
+        if url.to_ascii_lowercase().contains("profile") {
+            println!("{}", pretty_print_dictionary(&dict));
+        }
 
         // All this error handling is here to ensure that:
         // 1. We always warn/log errors from the server even if it returns the expected data

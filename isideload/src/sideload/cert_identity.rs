@@ -35,6 +35,7 @@ pub struct CertificateIdentity {
     pub machine_name: String,
     pub private_key: RsaPrivateKey,
     pub certificate: Certificate,
+    pub cert_id: String,
 }
 
 impl CertificateIdentity {
@@ -127,6 +128,7 @@ impl CertificateIdentity {
                 machine_name: cert.machine_name.clone().unwrap_or_default(),
                 certificate: x509_cert,
                 private_key: pr,
+                cert_id: cert.certificate_id.clone().unwrap_or_default(),
             });
         }
 
@@ -150,6 +152,7 @@ impl CertificateIdentity {
             machine_name: cert.machine_name.clone().unwrap_or_default(),
             certificate: x509_cert,
             private_key: pr,
+            cert_id: cert.certificate_id.clone().unwrap_or_default(),
         })
     }
 

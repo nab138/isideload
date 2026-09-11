@@ -6,7 +6,7 @@ use crate::{
     },
     util::plist::{PlistDataExtract, SensitivePlistAttachment},
 };
-use plist::{Data, Date, Dictionary, Value};
+use plist::{Date, Dictionary, Value};
 use plist_macro::plist;
 use reqwest::header::HeaderValue;
 use rootcause::prelude::*;
@@ -28,27 +28,6 @@ pub struct ListAppIdsResponse {
     pub app_ids: Vec<AppId>,
     pub max_quantity: Option<u64>,
     pub available_quantity: Option<i64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Profile {
-    pub encoded_profile: Data,
-    pub filename: String,
-    pub provisioning_profile_id: String,
-    pub name: String,
-    pub status: String,
-    pub r#type: String,
-    pub distribution_method: String,
-    pub pro_pro_platorm: Option<String>,
-    #[serde(rename = "UUID")]
-    pub uuid: String,
-    pub date_expire: Date,
-    pub managing_app: Option<String>,
-    pub app_id_id: String,
-    pub is_template_profile: bool,
-    pub is_team_profile: Option<bool>,
-    pub is_free_provisioning_profile: Option<bool>,
 }
 
 #[cfg_attr(feature = "wasm", async_trait::async_trait(?Send))]
@@ -148,30 +127,6 @@ pub trait AppIdsApi {
             .context("Failed to delete developer app ID")?;
 
         Ok(())
-    }
-
-    async fn download_team_provisioning_profile(
-        &mut self,
-        team: &DeveloperTeam,
-        app_id: &AppId,
-        device_type: impl Into<Option<DeveloperDeviceType>> + Send,
-    ) -> Result<Profile, Report> {
-        let body = plist!(dict {
-            "teamId": &team.team_id,
-            "appIdId": &app_id.app_id_id,
-        });
-
-        let response: Profile = self
-            .developer_session()
-            .send_dev_request(
-                &dev_url("downloadTeamProvisioningProfile", device_type),
-                body,
-                "provisioningProfile",
-            )
-            .await
-            .context("Failed to download provisioning profile")?;
-
-        Ok(response)
     }
 
     async fn add_increased_memory_limit(
