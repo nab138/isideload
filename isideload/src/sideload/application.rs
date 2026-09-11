@@ -178,30 +178,63 @@ impl Application {
         Ok(())
     }
 
+    fn unregistered_bundles(&self, app_ids: &[AppId]) -> Vec<&Bundle> {
+        std::iter::once(&self.bundle)
+            .chain(self.bundle.app_extensions())
+            .filter(|bundle| {
+                let identifier = bundle.bundle_identifier().unwrap_or("");
+                !app_ids
+                    .iter()
+                    .any(|app_id| app_id.identifier.eq_ignore_ascii_case(identifier))
+            })
+            .collect()
+    }
+
+    fn resolve_app_ids(&self, app_ids: &[AppId]) -> Result<Vec<AppId>, Report> {
+        std::iter::once(&self.bundle)
+            .chain(self.bundle.app_extensions())
+            .map(|bundle| -> Result<AppId, Report> {
+                let identifier = bundle.bundle_identifier().unwrap_or("");
+                Ok(app_ids
+                    .iter()
+                    .find(|app_id| app_id.identifier.eq_ignore_ascii_case(identifier))
+                    .cloned()
+                    .ok_or_report()
+                    .context(format!(
+                        "Registered app ID not found for bundle {}",
+                        identifier
+                    ))?)
+            })
+            .collect()
+    }
+
+    pub(crate) fn canonicalize_bundle_ids(&mut self, app_ids: &[AppId]) -> Result<(), Report> {
+        // Resolve every bundle before mutating any of them. Apple treats IDs as
+        // case-insensitive, but the signer's profile/entitlement maps use exact keys.
+        let resolved = self.resolve_app_ids(app_ids)?;
+        self.bundle.set_bundle_identifier(&resolved[0].identifier);
+        for (extension, app_id) in self
+            .bundle
+            .app_extensions_mut()
+            .iter_mut()
+            .zip(resolved.iter().skip(1))
+        {
+            extension.set_bundle_identifier(&app_id.identifier);
+        }
+        Ok(())
+    }
+
     pub async fn register_app_ids(
         &self,
         //mode: &ExtensionsBehavior,
         dev_session: &mut DeveloperSession,
         team: &DeveloperTeam,
     ) -> Result<Vec<AppId>, Report> {
-        let extension_refs: Vec<_> = self.bundle.app_extensions().iter().collect();
-        let mut bundles_with_app_id = vec![&self.bundle];
-        bundles_with_app_id.extend(extension_refs);
-
         let list_app_ids_response = dev_session
             .list_app_ids(team, None)
             .await
             .context("Failed to list app IDs for the developer team")?;
-        let app_ids_to_register = bundles_with_app_id
-            .iter()
-            .filter(|bundle| {
-                let bundle_id = bundle.bundle_identifier().unwrap_or("");
-                !list_app_ids_response
-                    .app_ids
-                    .iter()
-                    .any(|app_id| app_id.identifier == bundle_id)
-            })
-            .collect::<Vec<_>>();
+        let app_ids_to_register = self.unregistered_bundles(&list_app_ids_response.app_ids);
 
         if let Some(available) = list_app_ids_response.available_quantity {
             if available < 0 {
@@ -234,15 +267,7 @@ impl Application {
             dev_session.add_app_id(team, name, id, None).await?;
         }
         let list_app_id_response = dev_session.list_app_ids(team, None).await?;
-        let app_ids: Vec<_> = list_app_id_response
-            .app_ids
-            .into_iter()
-            .filter(|app_id| {
-                bundles_with_app_id
-                    .iter()
-                    .any(|bundle| app_id.identifier == bundle.bundle_identifier().unwrap_or(""))
-            })
-            .collect();
+        let app_ids = self.resolve_app_ids(&list_app_id_response.app_ids)?;
 
         info!("Registered app IDs");
         Ok(app_ids)

@@ -108,6 +108,8 @@ impl Sideloader {
                 &team,
             )
             .await?;
+        app.canonicalize_bundle_ids(&app_ids)?;
+        let main_app_id_str = app.main_bundle_id()?;
         let main_app_id = match app_ids
             .iter()
             .find(|app_id| app_id.identifier == main_app_id_str)
