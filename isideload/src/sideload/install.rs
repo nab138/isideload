@@ -174,14 +174,12 @@ fn afc_upload_dir<'a>(
                     .map_err(Error::IdeviceError)?;
 
                 let bytes = isideload_vfs::fs::read(&path)?;
-                for chunk in bytes.chunks(8 * 1024) {
-                    file_handle
-                        .write_entire(chunk)
-                        .await
-                        .map_err(Error::IdeviceError)?;
-                    *uploaded += chunk.len() as u64;
-                    cb(*uploaded as f64 / total);
-                }
+                file_handle
+                    .write_entire(&bytes)
+                    .await
+                    .map_err(Error::IdeviceError)?;
+                *uploaded += bytes.len() as u64;
+                cb(*uploaded as f64 / total);
                 file_handle.close().await.map_err(Error::IdeviceError)?;
             }
         }
