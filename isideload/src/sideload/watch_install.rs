@@ -1,7 +1,8 @@
 use idevice::{
-    Idevice, IdeviceService,
+    Idevice, IdeviceService, RsdService,
     pairing_file::PairingFile,
-    provider::IdeviceProvider,
+    provider::{IdeviceProvider, RsdProvider},
+    rsd::RsdHandshake,
     services::{companion_proxy::CompanionProxy, lockdown::LockdownClient},
 };
 use plist::{Dictionary, Value};
@@ -125,6 +126,101 @@ pub async fn install_watch_apps(
     result
 }
 
+/// Install or update already-signed embedded Watch apps through an existing RemotePairing/RSD
+/// tunnel. The iPhone pairing record is still used to pair/authenticate with the forwarded Watch
+/// lockdown service, while CompanionProxy and forwarded Watch sockets stay on the RSD transport.
+pub async fn install_watch_apps_rsd(
+    rsd_provider: &mut impl RsdProvider,
+    handshake: &mut RsdHandshake,
+    iphone_pairing: &PairingFile,
+    watch_apps: &[Bundle],
+    host_name: &str,
+    progress_callback: impl Fn(u64) + Send + Sync,
+) -> Result<(), Report> {
+    if watch_apps.is_empty() {
+        return Ok(());
+    }
+
+    let forwarded_lockdown_port = {
+        let mut companion_proxy = CompanionProxy::connect_rsd(rsd_provider, handshake)
+            .await
+            .map_err(Error::IdeviceError)
+            .context(
+                "Failed to connect to fresh Apple Watch RSD companion proxy for lockdown forwarding",
+            )?;
+
+        companion_proxy
+            .start_forwarding_service_port(
+                WATCH_LOCKDOWN_PORT,
+                Some(WATCH_LOCKDOWN_SERVICE),
+                None,
+            )
+            .await
+            .map_err(Error::IdeviceError)
+            .context("Failed to forward Apple Watch lockdown over RSD")?
+    };
+
+    let result = async {
+        let watch_connection = connect_forwarded_watch_port_rsd(
+            rsd_provider,
+            forwarded_lockdown_port,
+            "lockdown",
+        )
+        .await?;
+        let mut watch_lockdown = LockdownClient::new(watch_connection);
+
+        let watch_pairing = watch_lockdown
+            .pair(
+                iphone_pairing.host_id.clone(),
+                iphone_pairing.system_buid.clone(),
+                Some(host_name),
+            )
+            .await
+            .map_err(Error::IdeviceError)
+            .context("Failed to pair with the Apple Watch through RSD companion proxy")?;
+
+        let legacy = watch_lockdown
+            .start_session(&watch_pairing)
+            .await
+            .map_err(Error::IdeviceError)
+            .context("Failed to start Apple Watch lockdown session over RSD")?;
+
+        for watch_app in watch_apps {
+            install_watch_app_with_retry_rsd(
+                rsd_provider,
+                handshake,
+                &mut watch_lockdown,
+                &watch_pairing,
+                legacy,
+                watch_app,
+                &progress_callback,
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+    .await;
+
+    match CompanionProxy::connect_rsd(rsd_provider, handshake).await {
+        Ok(mut companion_proxy) => {
+            if let Err(e) = companion_proxy
+                .stop_forwarding_service_port(WATCH_LOCKDOWN_PORT)
+                .await
+            {
+                warn!("Failed to stop Apple Watch RSD lockdown forwarding: {e}");
+            }
+        }
+        Err(e) => {
+            warn!(
+                "Failed to open fresh Apple Watch RSD companion proxy to stop lockdown forwarding: {e}"
+            );
+        }
+    }
+
+    result
+}
+
 async fn connect_forwarded_watch_port(
     device_provider: &impl IdeviceProvider,
     forwarded_port: u16,
@@ -168,6 +264,51 @@ async fn connect_forwarded_watch_port(
     }
 
     unreachable!("bounded forwarded-port retry loop must return")
+}
+
+async fn connect_forwarded_watch_port_rsd(
+    rsd_provider: &mut impl RsdProvider,
+    forwarded_port: u16,
+    service: &str,
+) -> Result<Idevice, Report> {
+    for attempt in 1..=WATCH_FORWARD_CONNECT_ATTEMPTS {
+        match rsd_provider.connect_to_service_port(forwarded_port).await {
+            Ok(stream) => {
+                if attempt > 1 {
+                    info!(
+                        "Connected to Apple Watch {} over RSD on forwarded port {} after {} attempts",
+                        service, forwarded_port, attempt
+                    );
+                }
+                return Ok(Idevice::new(stream, "isideload-watch-rsd"));
+            }
+            Err(error) if attempt < WATCH_FORWARD_CONNECT_ATTEMPTS => {
+                warn!(
+                    "Apple Watch {} RSD forwarded port {} is not ready (attempt {}/{}): {}",
+                    service,
+                    forwarded_port,
+                    attempt,
+                    WATCH_FORWARD_CONNECT_ATTEMPTS,
+                    error
+                );
+                tokio::time::sleep(Duration::from_millis(
+                    WATCH_FORWARD_CONNECT_DELAY_MS,
+                ))
+                .await;
+            }
+            Err(error) => {
+                bail!(
+                    "Failed to connect to Apple Watch {} on RSD forwarded iPhone port {} after {} attempts: {}",
+                    service,
+                    forwarded_port,
+                    WATCH_FORWARD_CONNECT_ATTEMPTS,
+                    error
+                );
+            }
+        }
+    }
+
+    unreachable!("bounded RSD forwarded-port retry loop must return")
 }
 
 async fn install_watch_app_with_retry(
@@ -226,6 +367,64 @@ async fn install_watch_app_with_retry(
     unreachable!("bounded Watch install retry loop must return")
 }
 
+async fn install_watch_app_with_retry_rsd(
+    rsd_provider: &mut impl RsdProvider,
+    handshake: &mut RsdHandshake,
+    watch_lockdown: &mut LockdownClient,
+    watch_pairing: &PairingFile,
+    legacy: bool,
+    watch_app: &Bundle,
+    progress_callback: &(impl Fn(u64) + Send + Sync),
+) -> Result<(), Report> {
+    let bundle_id = watch_app
+        .bundle_identifier()
+        .ok_or_report()
+        .context("Watch app is missing CFBundleIdentifier")?;
+    let mut retry_delay_ms = WATCH_INSTALL_INITIAL_RETRY_DELAY_MS;
+
+    for attempt in 1..=WATCH_INSTALL_ATTEMPTS {
+        match install_watch_app_zip_conduit_rsd(
+            rsd_provider,
+            handshake,
+            watch_lockdown,
+            watch_pairing,
+            legacy,
+            watch_app,
+            progress_callback,
+        )
+        .await
+        {
+            Ok(()) => {
+                if attempt > 1 {
+                    info!(
+                        "Apple Watch app {bundle_id} installed/updated over RSD after {attempt} attempts"
+                    );
+                }
+                return Ok(());
+            }
+            Err(error)
+                if is_watch_coordinator_conflict(&error) && attempt < WATCH_INSTALL_ATTEMPTS =>
+            {
+                warn!(
+                    "Apple Watch RSD install coordinator still busy for {bundle_id} (attempt {attempt}/{WATCH_INSTALL_ATTEMPTS}); retrying with a fresh streaming_zip_conduit connection in {retry_delay_ms} ms: {error:?}"
+                );
+                tokio::time::sleep(Duration::from_millis(retry_delay_ms)).await;
+                retry_delay_ms = retry_delay_ms
+                    .saturating_mul(2)
+                    .min(WATCH_INSTALL_MAX_RETRY_DELAY_MS);
+            }
+            Err(error) => {
+                warn!(
+                    "Apple Watch RSD install/update failed for {bundle_id} on attempt {attempt}/{WATCH_INSTALL_ATTEMPTS}; the existing Watch app was not explicitly uninstalled"
+                );
+                return Err(error);
+            }
+        }
+    }
+
+    unreachable!("bounded Watch RSD install retry loop must return")
+}
+
 fn is_watch_coordinator_conflict(error: &Report) -> bool {
     let message = format!("{error:?}\n{error}");
     message.contains("IXErrorDomain Code=48")
@@ -255,11 +454,7 @@ async fn install_watch_app_zip_conduit(
             .context("Failed to connect to fresh Apple Watch companion proxy for streaming_zip_conduit forwarding")?;
 
         companion_proxy
-            .start_forwarding_service_port(
-                remote_port,
-                Some(WATCH_ZIP_SERVICE),
-                None,
-            )
+            .start_forwarding_service_port(remote_port, Some(WATCH_ZIP_SERVICE), None)
             .await
             .map_err(Error::IdeviceError)
             .context("Failed to forward Apple Watch streaming_zip_conduit")?
@@ -293,6 +488,72 @@ async fn install_watch_app_zip_conduit(
         }
         Err(e) => {
             warn!("Failed to open fresh Apple Watch companion proxy to stop streaming_zip_conduit forwarding: {e}");
+        }
+    }
+
+    result
+}
+
+async fn install_watch_app_zip_conduit_rsd(
+    rsd_provider: &mut impl RsdProvider,
+    handshake: &mut RsdHandshake,
+    watch_lockdown: &mut LockdownClient,
+    watch_pairing: &PairingFile,
+    legacy: bool,
+    watch_app: &Bundle,
+    progress_callback: &(impl Fn(u64) + Send + Sync),
+) -> Result<(), Report> {
+    let (remote_port, ssl) = watch_lockdown
+        .start_service(WATCH_ZIP_SERVICE)
+        .await
+        .map_err(Error::IdeviceError)
+        .context("Failed to start Apple Watch streaming_zip_conduit over RSD")?;
+
+    let forwarded_port = {
+        let mut companion_proxy = CompanionProxy::connect_rsd(rsd_provider, handshake)
+            .await
+            .map_err(Error::IdeviceError)
+            .context(
+                "Failed to connect to fresh Apple Watch RSD companion proxy for streaming_zip_conduit forwarding",
+            )?;
+
+        companion_proxy
+            .start_forwarding_service_port(remote_port, Some(WATCH_ZIP_SERVICE), None)
+            .await
+            .map_err(Error::IdeviceError)
+            .context("Failed to forward Apple Watch streaming_zip_conduit over RSD")?
+    };
+
+    let result = async {
+        let mut connection = connect_forwarded_watch_port_rsd(
+            rsd_provider,
+            forwarded_port,
+            "streaming_zip_conduit",
+        )
+        .await?;
+
+        if ssl {
+            connection
+                .start_session(watch_pairing, legacy)
+                .await
+                .map_err(Error::IdeviceError)
+                .context("Failed to secure Apple Watch RSD streaming_zip_conduit connection")?;
+        }
+
+        stream_watch_app(&mut connection, watch_app, progress_callback).await
+    }
+    .await;
+
+    match CompanionProxy::connect_rsd(rsd_provider, handshake).await {
+        Ok(mut companion_proxy) => {
+            if let Err(e) = companion_proxy.stop_forwarding_service_port(remote_port).await {
+                warn!("Failed to stop Apple Watch RSD streaming_zip_conduit forwarding: {e}");
+            }
+        }
+        Err(e) => {
+            warn!(
+                "Failed to open fresh Apple Watch RSD companion proxy to stop streaming_zip_conduit forwarding: {e}"
+            );
         }
     }
 
