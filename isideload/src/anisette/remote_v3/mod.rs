@@ -25,6 +25,15 @@ use crate::{SideloadError, anisette::remote_v3::websocket::AppWebSocket};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
 
+/// Used only when the anisette server does not expose `/v3/client_info`.
+///
+/// Apple answers requests carrying a `com.apple.dt.Xcode` client info with
+/// `503 Service Temporarily Unavailable`, so servers that provide their own
+/// value should always be preferred.
+const FALLBACK_CLIENT_INFO: &str =
+    "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.dt.Xcode/25183.54.10)>";
+const FALLBACK_USER_AGENT: &str = "akd/1.0 CFNetwork/808.1.4";
+
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
     url: String,
@@ -160,10 +169,19 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
     }
 
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
-        Ok(AnisetteClientInfo {
-            client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.dt.Xcode/25183.54.10)>".to_string(),
-            user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
-        })
+        match self.fetch_client_info().await {
+            Ok(client_info) => Ok(client_info),
+            Err(e) => {
+                warn!(
+                    "Failed to get client info from the anisette server, \
+                     falling back to the built-in value: {e:?}"
+                );
+                Ok(AnisetteClientInfo {
+                    client_info: FALLBACK_CLIENT_INFO.to_string(),
+                    user_agent: FALLBACK_USER_AGENT.to_string(),
+                })
+            }
+        }
     }
 
     fn needs_provisioning(&self) -> Result<bool, Report> {
@@ -182,6 +200,21 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 }
 
 impl RemoteV3AnisetteProvider {
+    /// Ask the anisette server which client info it generates its data for.
+    ///
+    /// The headers the server returns are tied to the identity it emulates, so
+    /// the `X-Mme-Client-Info` sent to Apple has to match it.
+    async fn fetch_client_info(&self) -> Result<AnisetteClientInfo, Report> {
+        Ok(self
+            .client
+            .get(format!("{}/v3/client_info", self.url))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<AnisetteClientInfo>()
+            .await?)
+    }
+
     async fn get_state(&mut self, gs: Arc<GrandSlam>) -> Result<&mut AnisetteState, Report> {
         if self.state.is_none() {
             if let Ok(Some(state)) = &self.storage.retrieve_data("anisette_state") {
