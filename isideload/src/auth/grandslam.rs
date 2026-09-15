@@ -18,6 +18,25 @@ use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataE
 const APPLE_ROOT: &[u8] = include_bytes!("./apple_root.der");
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
 
+/// How many times a GrandSlam request is attempted before giving up.
+///
+/// Apple's edge answers a share of well-formed requests with a bare
+/// `429 Too Many Requests` HTML page, in windows that last from seconds to a
+/// few minutes. It is not tied to the account or to how many requests this
+/// client has made: identical requests from two machines, in the same minute,
+/// get a mix of `200` and `429`. Retrying gets through; failing on the first
+/// answer turns a transient edge hiccup into a failed sign-in.
+const MAX_ATTEMPTS: u32 = 6;
+
+/// Wait before retrying, doubling each time: 1s, 2s, 4s, 8s, 16s.
+#[cfg(not(feature = "wasm"))]
+async fn backoff(attempt: u32) {
+    tokio::time::sleep(std::time::Duration::from_secs(1u64 << attempt)).await;
+}
+
+#[cfg(feature = "wasm")]
+async fn backoff(_attempt: u32) {}
+
 pub struct GrandSlam {
     pub client: reqwest_middleware::ClientWithMiddleware,
     pub client_info: AnisetteClientInfo,
@@ -140,18 +159,39 @@ impl GrandSlam {
         body: &Dictionary,
         additional_headers: Option<HeaderMap>,
     ) -> Result<Dictionary, Report> {
-        let resp = self
-            .post(url)?
-            .headers(additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new))
-            .body(plist_to_xml_string(body))
-            .send()
-            .await
-            .context("Failed to send grandslam request")?
-            .error_for_status()
-            .context("Received error response from grandslam")?
-            .text()
-            .await
-            .context("Failed to read grandslam response as text")?;
+        let extra_headers = additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new);
+        let xml_body = plist_to_xml_string(body);
+
+        let mut attempt = 0;
+        let resp = loop {
+            let response = self
+                .post(url)?
+                .headers(extra_headers.clone())
+                .body(xml_body.clone())
+                .send()
+                .await
+                .context("Failed to send grandslam request")?;
+
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+                && attempt + 1 < MAX_ATTEMPTS
+            {
+                debug!(
+                    "GrandSlam answered 429, retrying ({} of {})",
+                    attempt + 1,
+                    MAX_ATTEMPTS
+                );
+                backoff(attempt).await;
+                attempt += 1;
+                continue;
+            }
+
+            break response
+                .error_for_status()
+                .context("Received error response from grandslam")?
+                .text()
+                .await
+                .context("Failed to read grandslam response as text")?;
+        };
 
         let dict: Dictionary = plist::from_bytes(resp.as_bytes())
             .context("Failed to parse grandslam response plist")
