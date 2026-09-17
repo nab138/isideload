@@ -208,7 +208,8 @@ impl GrandSlam {
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
     pub fn build_reqwest_client(
-        debug: bool,
+        #[cfg(not(feature = "wasm"))] debug: bool,
+        #[cfg(feature = "wasm")] _debug: bool,
         proxy_url: Option<String>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
         #[cfg(not(feature = "wasm"))]

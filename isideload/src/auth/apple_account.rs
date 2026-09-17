@@ -1,5 +1,6 @@
-use std::{future::Future, sync::Arc};
+use std::sync::Arc;
 
+use crate::util::callbacks::TwoFactorCallback;
 use crate::{
     SideloadError,
     anisette::{AnisetteData, AnisetteDataGenerator},
@@ -165,40 +166,16 @@ impl AppleAccount {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the login fails
-    #[cfg(target_arch = "wasm32")]
-    pub async fn login<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
+    pub async fn login<C>(&mut self, password: &str, two_factor_callback: C) -> Result<(), Report>
     where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+        C: TwoFactorCallback,
     {
         self.login_impl(password, two_factor_callback).await
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub async fn login<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
+    async fn login_impl<C>(&mut self, password: &str, two_factor_callback: C) -> Result<(), Report>
     where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
-    {
-        self.login_impl(password, two_factor_callback).await
-    }
-
-    async fn login_impl<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
-    where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+        C: TwoFactorCallback,
     {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {

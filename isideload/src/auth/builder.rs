@@ -3,9 +3,10 @@ use std::sync::Arc;
 use rootcause::prelude::*;
 use tokio::sync::RwLock;
 
+use crate::util::callbacks::TwoFactorCallback;
 use crate::{
     anisette::{AnisetteDataGenerator, AnisetteProvider, remote_v3::RemoteV3AnisetteProvider},
-    auth::apple_account::{AppleAccount, TwoFactorCallbackParams, TwoFactorCallbackResponse},
+    auth::apple_account::AppleAccount,
 };
 
 pub struct AppleAccountBuilder {
@@ -77,30 +78,13 @@ impl AppleAccountBuilder {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
-    #[cfg(target_arch = "wasm32")]
-    pub async fn login<C, Fut>(
+    pub async fn login<C>(
         self,
         password: &str,
         two_factor_callback: C,
     ) -> Result<AppleAccount, Report>
     where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: std::future::Future<Output = Result<TwoFactorCallbackResponse, Report>>,
-    {
-        let mut account = self.build().await?;
-        account.login(password, two_factor_callback).await?;
-        Ok(account)
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub async fn login<C, Fut>(
-        self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<AppleAccount, Report>
-    where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: std::future::Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
+        C: TwoFactorCallback,
     {
         let mut account = self.build().await?;
         account.login(password, two_factor_callback).await?;

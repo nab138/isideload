@@ -28,7 +28,6 @@ impl SensitivePlistAttachment {
     }
 
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // if env variable DEBUG_SENSITIVE is set, print full plist
         if std::env::var("DEBUG_SENSITIVE").is_ok() {
             return writeln!(f, "{}", pretty_print_dictionary(&self.plist));
         }
