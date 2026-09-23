@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use apple_codesign::{
+use apple_codesign_quick::{
     BundleSigningSettings, ProvisioningProfile, RustCryptoCmsSigner, sign_bundle,
 };
 

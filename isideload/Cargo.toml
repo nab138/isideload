@@ -16,7 +16,7 @@ default = ["install", "keyring-storage", "tokio-mt"]
 tokio-mt = ["tokio/rt-multi-thread", "dep:tokio-tungstenite"]
 install = ["dep:idevice"]
 keyring-storage = ["dep:keyring"]
-wasm = ["idevice/wasm", "dep:getrandom_02", "dep:getrandom_04", "uuid/js", "dep:ws_stream_wasm", "apple-codesign/wasm"]
+wasm = ["idevice/wasm", "dep:getrandom_02", "dep:getrandom_04", "uuid/js", "dep:ws_stream_wasm"]
 fs-storage = []
 
 # Unfortunately, dependencies are kinda a mess rn, since this requires a beta version of the srp crate.
@@ -61,8 +61,8 @@ urlencoding = { version = "2.1.3" }
 futures = "0.3.32"
 ws_stream_wasm = { version = "0.7.5", optional = true}
 web-time = "1"
-apple-codesign = { git = "https://github.com/nab138/apple-crates", version = "0.1.0", package = "apple-codesign" }
 x509-cert = "0.2.5"
+apple-codesign-quick = "0.1.0"
 
 
 # There is a bug in rustls-platform-verifier that causes an invalid certificate error with apple's root cert.

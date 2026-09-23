@@ -1,4 +1,4 @@
-use apple_codesign::ProvisioningProfile;
+use apple_codesign_quick::ProvisioningProfile;
 use hex::ToHex;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
 use rootcause::{option_ext::OptionExt, prelude::*};
