@@ -232,6 +232,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
     #[cfg(feature = "install")]
     /// Sign and install an app to a device.
+    /// This is more intended to be a helper function for simple use cases, for more complex scenarios you should call `sign_app` and `install_app` separately.
     pub async fn install_app<F, Fut>(
         &mut self,
         device_provider: &impl IdeviceProvider,
@@ -262,8 +263,13 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
         info!("Transferring App...");
 
+        let last_logged_progress = std::sync::Arc::new(std::sync::Mutex::new(0));
         crate::sideload::install::install_app(device_provider, &signed_app_path, |progress| {
-            info!("Installing: {}%", progress);
+            let mut last_progress = last_logged_progress.lock().unwrap();
+            if progress >= *last_progress + 10 {
+                *last_progress = progress;
+                info!("Installing: {}%", progress);
+            }
         })
         .await
         .context("Failed to install app on device")?;
