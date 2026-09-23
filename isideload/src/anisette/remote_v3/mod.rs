@@ -161,7 +161,9 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
         Ok(AnisetteClientInfo {
-            client_info: "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.akd/1.0)>".to_string(),
+            client_info:
+                "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
+                    .to_string(),
             user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
         })
     }
@@ -305,6 +307,7 @@ impl RemoteV3AnisetteProvider {
                             &start_provisioning,
                             &body,
                             Some(Self::provisioning_headers(state).await?),
+                            None,
                         )
                         .await
                         .context("Failed to send start provisioning request")?;
@@ -336,6 +339,7 @@ impl RemoteV3AnisetteProvider {
                             &end_provisioning,
                             &body,
                             Some(Self::provisioning_headers(state).await?),
+                            None,
                         )
                         .await
                         .context("Failed to send end provisioning request")?;

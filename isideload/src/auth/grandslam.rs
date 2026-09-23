@@ -11,6 +11,7 @@ use reqwest::{
 use reqwest_middleware::ClientBuilder as MwClientBuilder;
 use rootcause::prelude::*;
 use tracing::debug;
+use tracing::warn;
 
 #[cfg(not(feature = "wasm"))]
 use crate::sideload::cert_identity::APPLE_ROOT;
@@ -139,14 +140,41 @@ impl GrandSlam {
         url: &str,
         body: &Dictionary,
         additional_headers: Option<HeaderMap>,
+        retry_limit: Option<u32>,
     ) -> Result<Dictionary, Report> {
-        let resp = self
+        let result = self
             .post(url)?
-            .headers(additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new))
+            .headers(
+                additional_headers
+                    .clone()
+                    .unwrap_or_else(reqwest::header::HeaderMap::new),
+            )
             .body(plist_to_xml_string(body))
             .send()
             .await
-            .context("Failed to send grandslam request")?
+            .context("Failed to send grandslam request")?;
+
+        if let Some(retries) = retry_limit
+            && result.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+        {
+            if retries > 0 {
+                warn!(
+                    "Received 429 Too Many Requests, retrying request ({} retries left)",
+                    retries
+                );
+                return Box::pin(self.plist_request(
+                    url,
+                    body,
+                    additional_headers,
+                    Some(retries - 1),
+                ))
+                .await;
+            } else {
+                bail!("Received 429 Too Many Requests, no retries left");
+            }
+        }
+
+        let resp = result
             .error_for_status()
             .context("Received error response from grandslam")?
             .text()
