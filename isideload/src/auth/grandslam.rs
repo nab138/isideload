@@ -197,6 +197,10 @@ impl GrandSlam {
             "X-Apple-App-Info",
             HeaderValue::from_static("com.apple.gs.xcode.auth"),
         );
+        headers.insert(
+            reqwest::header::CONNECTION,
+            HeaderValue::from_static("close"),
+        );
 
         Ok(headers)
     }
@@ -220,7 +224,7 @@ impl GrandSlam {
             .http1_title_case_headers()
             .danger_accept_invalid_certs(debug)
             .connection_verbose(debug)
-            .pool_max_idle_per_host(0)
+            // .pool_max_idle_per_host(0)
             .build()?;
         #[cfg(feature = "wasm")]
         let client = ClientBuilder::new().build()?;
