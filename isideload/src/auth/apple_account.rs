@@ -1,5 +1,6 @@
-use std::{future::Future, sync::Arc};
+use std::sync::Arc;
 
+use crate::util::callbacks::TwoFactorCallback;
 use crate::{
     SideloadError,
     anisette::{AnisetteData, AnisetteDataGenerator},
@@ -35,6 +36,7 @@ pub struct AppleAccount {
     login_state: LoginState,
     debug: bool,
     last_error: Option<String>,
+    err_429_retries: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +137,7 @@ impl AppleAccount {
         anisette_generator: AnisetteDataGenerator,
         debug: bool,
         proxy_url: Option<String>,
+        err_429_retries: Option<u32>,
     ) -> Result<Self, Report> {
         if debug {
             warn!("Debug mode enabled: this is a security risk!");
@@ -156,6 +159,7 @@ impl AppleAccount {
             login_state: LoginState::NeedsLogin,
             trusted_phone_numbers: None,
             last_error: None,
+            err_429_retries,
         })
     }
 
@@ -165,40 +169,16 @@ impl AppleAccount {
     /// - `two_factor_callback`: A callback function that returns the two-factor authentication code
     /// # Errors
     /// Returns an error if the login fails
-    #[cfg(target_arch = "wasm32")]
-    pub async fn login<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
+    pub async fn login<C>(&mut self, password: &str, two_factor_callback: C) -> Result<(), Report>
     where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+        C: TwoFactorCallback,
     {
         self.login_impl(password, two_factor_callback).await
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub async fn login<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
+    async fn login_impl<C>(&mut self, password: &str, two_factor_callback: C) -> Result<(), Report>
     where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>> + Send,
-    {
-        self.login_impl(password, two_factor_callback).await
-    }
-
-    async fn login_impl<C, Fut>(
-        &mut self,
-        password: &str,
-        two_factor_callback: C,
-    ) -> Result<(), Report>
-    where
-        C: Fn(TwoFactorCallbackParams) -> Fut + Send + Sync,
-        Fut: Future<Output = Result<TwoFactorCallbackResponse, Report>>,
+        C: TwoFactorCallback,
     {
         info!("Logging in to Apple ID: {}", censor_email(&self.email));
         if self.debug {
@@ -778,7 +758,7 @@ impl AppleAccount {
 
         let response = self
             .grandslam_client
-            .plist_request(&gs_service_url, &req1, None)
+            .plist_request(&gs_service_url, &req1, None, self.err_429_retries)
             .await
             .context("Failed to send initial login request")?
             .check_grandslam_error()
@@ -847,7 +827,12 @@ impl AppleAccount {
 
         let response2 = self
             .grandslam_client
-            .plist_request(&gs_service_url, &req2, Some(close_headers))
+            .plist_request(
+                &gs_service_url,
+                &req2,
+                Some(close_headers),
+                self.err_429_retries,
+            )
             .await
             .context("Failed to send proof login request")?
             .check_grandslam_error()
@@ -950,7 +935,7 @@ impl AppleAccount {
 
         let resp = self
             .grandslam_client
-            .plist_request(&gs_service_url, &request, None)
+            .plist_request(&gs_service_url, &request, None, self.err_429_retries)
             .await
             .context("Failed to send app token request")?
             .check_grandslam_error()
