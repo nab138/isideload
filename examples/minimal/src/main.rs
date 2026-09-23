@@ -155,7 +155,7 @@ async fn main() {
         Some(teams[selection - 1].team_id.clone())
     };
 
-    let cert_selection_prompt = |certs: &Vec<DevelopmentCertificate>| {
+    let cert_selection_prompt = async |certs: Vec<DevelopmentCertificate>| {
         println!("Maximum number of certificates reached. Please select certificates to revoke:");
         for (index, cert) in certs.iter().enumerate() {
             println!(
@@ -175,19 +175,19 @@ async fn main() {
             .filter(|&n| n > 0 && n <= certs.len())
             .collect();
         if selections.is_empty() {
-            return None;
+            return Ok(None);
         }
-        Some(
+        Ok(Some(
             selections
                 .into_iter()
                 .map(|n| certs[n - 1].serial_number.clone().unwrap_or_default())
                 .collect::<Vec<_>>(),
-        )
+        ))
     };
 
     let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
         .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
-        .max_certs_behavior(MaxCertsBehavior::Prompt(Box::new(cert_selection_prompt)))
+        .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
         .storage(Box::new(KeyringStorage::new("minimal".to_string())))
         .machine_name("isideload-minimal".to_string())
         .build();

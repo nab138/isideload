@@ -13,7 +13,7 @@ use crate::{
         cert_identity::CertificateIdentity,
         sign,
     },
-    util::{device::IdeviceInfo, storage::SideloadingStorage},
+    util::{callbacks::MaxCertsCallback, device::IdeviceInfo, storage::SideloadingStorage},
 };
 
 use std::path::PathBuf;
@@ -24,19 +24,19 @@ use plist::Dictionary;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
-pub struct Sideloader {
+pub struct Sideloader<C: MaxCertsCallback> {
     team_selection: TeamSelection,
     storage: Box<dyn SideloadingStorage>,
     dev_session: DeveloperSession,
     machine_name: String,
     apple_email: String,
-    max_certs_behavior: MaxCertsBehavior,
+    max_certs_behavior: MaxCertsBehavior<C>,
     //extensions_behavior: ExtensionsBehavior,
     delete_app_after_install: bool,
     team: Option<DeveloperTeam>,
 }
 
-impl Sideloader {
+impl<C: MaxCertsCallback> Sideloader<C> {
     /// Construct a new `Sideloader` instance with the provided configuration
     ///
     /// See [`crate::sideload::SideloaderBuilder`] for more details and a more convenient way to construct a `Sideloader`.
@@ -44,7 +44,7 @@ impl Sideloader {
         dev_session: DeveloperSession,
         apple_email: String,
         team_selection: TeamSelection,
-        max_certs_behavior: MaxCertsBehavior,
+        max_certs_behavior: MaxCertsBehavior<C>,
         machine_name: String,
         storage: Box<dyn SideloadingStorage>,
         //extensions_behavior: ExtensionsBehavior,
@@ -232,6 +232,7 @@ impl Sideloader {
 
     #[cfg(feature = "install")]
     /// Sign and install an app to a device.
+    /// This is more intended to be a helper function for simple use cases, for more complex scenarios you should call `sign_app` and `install_app` separately.
     pub async fn install_app<F, Fut>(
         &mut self,
         device_provider: &impl IdeviceProvider,
@@ -262,8 +263,13 @@ impl Sideloader {
 
         info!("Transferring App...");
 
+        let last_logged_progress = std::sync::Arc::new(std::sync::Mutex::new(0));
         crate::sideload::install::install_app(device_provider, &signed_app_path, |progress| {
-            info!("Installing: {}%", progress);
+            let mut last_progress = last_logged_progress.lock().unwrap();
+            if progress >= *last_progress + 10 {
+                *last_progress = progress;
+                info!("Installing: {}%", progress);
+            }
         })
         .await
         .context("Failed to install app on device")?;

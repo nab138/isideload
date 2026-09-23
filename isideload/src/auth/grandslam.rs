@@ -14,6 +14,7 @@ use rootcause::prelude::*;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
+use tracing::warn;
 
 #[cfg(not(feature = "wasm"))]
 use crate::sideload::cert_identity::APPLE_ROOT;
@@ -332,14 +333,41 @@ impl GrandSlam {
         url: &str,
         body: &Dictionary,
         additional_headers: Option<HeaderMap>,
+        retry_limit: Option<u32>,
     ) -> Result<Dictionary, Report> {
-        let resp = self
+        let result = self
             .post(url)?
-            .headers(additional_headers.unwrap_or_else(reqwest::header::HeaderMap::new))
+            .headers(
+                additional_headers
+                    .clone()
+                    .unwrap_or_else(reqwest::header::HeaderMap::new),
+            )
             .body(plist_to_xml_string(body))
             .send()
             .await
-            .context("Failed to send grandslam request")?
+            .context("Failed to send grandslam request")?;
+
+        if let Some(retries) = retry_limit
+            && result.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+        {
+            if retries > 0 {
+                warn!(
+                    "Received 429 Too Many Requests, retrying request ({} retries left)",
+                    retries
+                );
+                return Box::pin(self.plist_request(
+                    url,
+                    body,
+                    additional_headers,
+                    Some(retries - 1),
+                ))
+                .await;
+            } else {
+                bail!("Received 429 Too Many Requests, no retries left");
+            }
+        }
+
+        let resp = result
             .error_for_status()
             .context("Received error response from grandslam")?
             .text()
@@ -390,6 +418,10 @@ impl GrandSlam {
             "X-Apple-App-Info",
             HeaderValue::from_static("com.apple.gs.xcode.auth"),
         );
+        headers.insert(
+            reqwest::header::CONNECTION,
+            HeaderValue::from_static("close"),
+        );
 
         Ok(headers)
     }
@@ -401,7 +433,8 @@ impl GrandSlam {
     /// # Errors
     /// Returns an error if the reqwest client cannot be built
     pub fn build_reqwest_client(
-        debug: bool,
+        #[cfg(not(feature = "wasm"))] debug: bool,
+        #[cfg(feature = "wasm")] _debug: bool,
         proxy_url: Option<String>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, Report> {
         Self::build_reqwest_client_with_capture(debug, proxy_url, None)
@@ -420,6 +453,7 @@ impl GrandSlam {
             .http1_title_case_headers()
             .danger_accept_invalid_certs(debug)
             .connection_verbose(debug)
+            // .pool_max_idle_per_host(0)
             .build()?;
         #[cfg(feature = "wasm")]
         let client = ClientBuilder::new().build()?;

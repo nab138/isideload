@@ -24,7 +24,7 @@ use crate::{
         teams::DeveloperTeam,
     },
     sideload::builder::MaxCertsBehavior,
-    util::storage::SideloadingStorage,
+    util::{callbacks::MaxCertsCallback, storage::SideloadingStorage},
 };
 
 pub const APPLE_ROOT: &[u8] = include_bytes!("../assets/apple_root.cer");
@@ -109,13 +109,13 @@ impl CertificateIdentity {
         serial.trim_start_matches('0').to_string().to_uppercase()
     }
 
-    pub async fn retrieve(
+    pub async fn retrieve<C: MaxCertsCallback>(
         machine_name: &str,
         apple_email: &str,
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
         storage: &dyn SideloadingStorage,
-        max_certs_behavior: &MaxCertsBehavior,
+        max_certs_behavior: &MaxCertsBehavior<C>,
     ) -> Result<Self, Report> {
         let pr = Self::retrieve_private_key(apple_email, storage).await?;
 
@@ -286,12 +286,12 @@ impl CertificateIdentity {
         Ok(None)
     }
 
-    async fn request_certificate(
+    async fn request_certificate<C: MaxCertsCallback>(
         private_key: &RsaPrivateKey,
         machine_name: String,
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
-        max_certs_behavior: &MaxCertsBehavior,
+        max_certs_behavior: &MaxCertsBehavior<C>,
     ) -> Result<(DevelopmentCertificate, Certificate), Report> {
         let csr = Self::build_csr(private_key).context("Failed to generate CSR")?;
 
@@ -384,10 +384,10 @@ impl CertificateIdentity {
         Ok(params.serialize_request(&subject_key)?.pem()?)
     }
 
-    async fn revoke_others(
+    async fn revoke_others<C: MaxCertsCallback>(
         developer_session: &mut DeveloperSession,
         team: &DeveloperTeam,
-        max_certs_behavior: &MaxCertsBehavior,
+        max_certs_behavior: &MaxCertsBehavior<C>,
         error: SideloadError,
         existing_certs: &mut Vec<DevelopmentCertificate>,
     ) -> Result<(), Report> {
@@ -409,7 +409,7 @@ impl CertificateIdentity {
             }
             MaxCertsBehavior::Error => Err(error.into()),
             MaxCertsBehavior::Prompt(prompt_fn) => {
-                let certs_to_revoke = prompt_fn(existing_certs);
+                let certs_to_revoke = prompt_fn(existing_certs.to_vec()).await?;
                 if certs_to_revoke.is_none() {
                     error!("User did not select any certificates to revoke");
                     return Err(error.into());
