@@ -13,6 +13,12 @@ use crate::SideloadError as Error;
 use std::pin::Pin;
 use std::{future::Future, path::Path};
 
+const AFC_UPLOAD_CHUNK_SIZE: usize = if cfg!(target_arch = "wasm32") {
+    8 * 1024
+} else {
+    1024 * 1024
+};
+
 /// Installs an ***already signed*** app onto your device.
 /// To sign and install an app, see [`crate::sideload::sideload_app`]
 pub async fn install_app(
@@ -174,7 +180,7 @@ fn afc_upload_dir<'a>(
                     .map_err(Error::IdeviceError)?;
 
                 let bytes = isideload_vfs::fs::read(&path)?;
-                for chunk in bytes.chunks(8 * 1024) {
+                for chunk in bytes.chunks(AFC_UPLOAD_CHUNK_SIZE) {
                     file_handle
                         .write_entire(chunk)
                         .await

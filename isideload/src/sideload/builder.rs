@@ -1,12 +1,9 @@
 use std::fmt::Display;
 
 use crate::{
-    dev::{
-        certificates::DevelopmentCertificate, developer_session::DeveloperSession,
-        teams::DeveloperTeam,
-    },
+    dev::{developer_session::DeveloperSession, teams::DeveloperTeam},
     sideload::sideloader::Sideloader,
-    util::storage::SideloadingStorage,
+    util::{callbacks::MaxCertsCallback, storage::SideloadingStorage},
 };
 
 /// Configuration for selecting a developer team during sideloading
@@ -34,13 +31,13 @@ impl Display for TeamSelection {
 }
 
 /// Behavior when the maximum number of development certificates is reached
-pub enum MaxCertsBehavior {
+pub enum MaxCertsBehavior<C: MaxCertsCallback> {
     /// If the maximum number of certificates is reached, revoke certs until it is possible to create a new certificate
     Revoke,
     /// If the maximum number of certificates is reached, return an error instead of creating a new certificate
     Error,
     /// If the maximum number of certificates is reached, prompt the user to select which certificates to revoke until it is possible to create a new certificate
-    Prompt(Box<dyn Fn(&Vec<DevelopmentCertificate>) -> Option<Vec<String>> + Send + Sync>),
+    Prompt(C),
 }
 
 /// The actual behavior choices for extensions (non-prompt variants)
@@ -75,18 +72,18 @@ pub enum ExtensionsBehaviorChoice {
 //     }
 // }
 
-pub struct SideloaderBuilder {
+pub struct SideloaderBuilder<C: MaxCertsCallback> {
     developer_session: DeveloperSession,
     apple_email: String,
     team_selection: Option<TeamSelection>,
-    max_certs_behavior: Option<MaxCertsBehavior>,
+    max_certs_behavior: Option<MaxCertsBehavior<C>>,
     //extensions_behavior: Option<ExtensionsBehavior>,
     storage: Option<Box<dyn SideloadingStorage>>,
     machine_name: Option<String>,
     delete_app_after_install: bool,
 }
 
-impl SideloaderBuilder {
+impl<C: MaxCertsCallback> SideloaderBuilder<C> {
     /// Create a new `SideloaderBuilder` with the provided Apple developer session and Apple ID email.
     pub fn new(developer_session: DeveloperSession, apple_email: String) -> Self {
         SideloaderBuilder {
@@ -130,7 +127,7 @@ impl SideloaderBuilder {
     }
 
     /// Set the behavior for when the maximum number of development certificates is reached
-    pub fn max_certs_behavior(mut self, behavior: MaxCertsBehavior) -> Self {
+    pub fn max_certs_behavior(mut self, behavior: MaxCertsBehavior<C>) -> Self {
         self.max_certs_behavior = Some(behavior);
         self
     }
@@ -147,7 +144,10 @@ impl SideloaderBuilder {
     // }
 
     /// Build the `Sideloader` instance with the provided configuration
-    pub fn build(self) -> Sideloader {
+    pub fn build(self) -> Sideloader<C>
+    where
+        C: MaxCertsCallback,
+    {
         Sideloader::new(
             self.developer_session,
             self.apple_email,
