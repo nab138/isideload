@@ -8,8 +8,5 @@ pub mod teams;
 
 // some non-alphanumeric characters cause Developer error 35: An invalid value was provided for the parameter 'appIdName'.
 pub fn normalize_app_names(name: &str) -> String {
-    name.chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ')
-        .map(|c| if c == ' ' { '_' } else { c })
-        .collect()
+    name.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
 }
