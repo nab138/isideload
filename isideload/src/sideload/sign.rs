@@ -79,5 +79,9 @@ where
         callback(0.5).await;
     }
 
+    for watch_app in app.bundle.watch_apps() {
+        sign_bundle(&watch_app.bundle_dir, &settings)?;
+    }
+
     Ok(sign_bundle(&app.bundle.bundle_dir, &settings)?)
 }
