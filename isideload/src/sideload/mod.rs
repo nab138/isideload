@@ -6,4 +6,6 @@ pub mod cert_identity;
 pub mod install;
 pub mod sideloader;
 pub mod sign;
+#[cfg(feature = "install")]
+pub mod watch_install;
 pub use builder::{SideloaderBuilder, TeamSelection};
