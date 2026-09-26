@@ -247,6 +247,9 @@ impl<C: MaxCertsCallback> Sideloader<C> {
     {
         let device_info = IdeviceInfo::from_device(device_provider).await?;
 
+        self.dev_session
+            .set_device_type(device_info.product_type.as_deref().into());
+
         let team = self.get_team().await?;
         self.dev_session
             .ensure_device_registered(&team, &device_info.name, &device_info.udid, None)
