@@ -31,6 +31,7 @@ pub struct DeveloperSession {
     adsid: String,
     client: Arc<GrandSlam>,
     anisette_generator: AnisetteDataGenerator,
+    device_type: DeveloperDeviceType,
 }
 
 impl DeveloperSession {
@@ -45,6 +46,7 @@ impl DeveloperSession {
             adsid,
             client,
             anisette_generator,
+            device_type: DeveloperDeviceType::Ios,
         }
     }
 
@@ -65,6 +67,11 @@ impl DeveloperSession {
             account.grandslam_client.clone(),
             account.anisette_generator.clone(),
         ))
+    }
+
+    /// Set the platform selected for subsequent developer service requests.
+    pub fn set_device_type(&mut self, device_type: DeveloperDeviceType) {
+        self.device_type = device_type;
     }
 
     pub async fn get_headers(&mut self) -> Result<HeaderMap, Report> {
@@ -101,7 +108,8 @@ impl DeveloperSession {
             "userLocale": ["en_US"],
         });
 
-        let body = base.into_iter().chain(body.into_iter()).collect();
+        let mut body = base.into_iter().chain(body.into_iter()).collect();
+        self.device_type.apply_platform_fields(&mut body);
 
         let text = self
             .client
