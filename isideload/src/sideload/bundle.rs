@@ -225,7 +225,7 @@ fn find_dylibs(dir: &Path, bundle_root: &Path) -> Result<Vec<String>, Report> {
 
             if file_type.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && name.ends_with(".dylib")
+                    && (name.ends_with(".dylib") || name.ends_with(".so"))
                 {
                     // Get relative path from bundle root
                     if let Ok(relative_path) = path.strip_prefix(bundle_root)
