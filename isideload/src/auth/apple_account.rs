@@ -33,6 +33,8 @@ pub struct AppleAccount {
     pub anisette_generator: AnisetteDataGenerator,
     pub grandslam_client: Arc<GrandSlam>,
     pub trusted_phone_numbers: Option<Vec<TrustedNumber>>,
+    /// Set for legacy ("hsa") accounts, which list their SMS number under `trustedDevices`
+    hsa_sms_device_id: Option<String>,
     login_state: LoginState,
     debug: bool,
     last_error: Option<String>,
@@ -158,6 +160,7 @@ impl AppleAccount {
             debug,
             login_state: LoginState::NeedsLogin,
             trusted_phone_numbers: None,
+            hsa_sms_device_id: None,
             last_error: None,
             err_429_retries,
         })
@@ -442,6 +445,11 @@ impl AppleAccount {
     }
 
     async fn send_sms_2fa(&mut self, id: u32) -> Result<LoginState, Report> {
+        if let Some(device_id) = self.hsa_sms_device_id.clone() {
+            self.hsa_security_code(&device_id, None).await?;
+            return Ok(LoginState::NeedsSMS2FAVerification(id));
+        }
+
         let anisette_data = self
             .anisette_generator
             .get_anisette_data(self.grandslam_client.clone())
@@ -520,6 +528,11 @@ impl AppleAccount {
     }
 
     async fn verify_sms_2fa(&mut self, code: String, id: u32) -> Result<LoginState, Report> {
+        if let Some(device_id) = self.hsa_sms_device_id.clone() {
+            self.hsa_security_code(&device_id, Some(&code)).await?;
+            return Ok(LoginState::NeedsLogin);
+        }
+
         let anisette_data = self
             .anisette_generator
             .get_anisette_data(self.grandslam_client.clone())
@@ -645,6 +658,42 @@ impl AppleAccount {
         })
     }
 
+    /// Legacy ("hsa") accounts ignore /auth/verify/phone and are sent a code per trusted device.
+    /// Without `code` this requests the SMS, with `code` it submits it.
+    async fn hsa_security_code(
+        &mut self,
+        device_id: &str,
+        code: Option<&str>,
+    ) -> Result<(), Report> {
+        let anisette_data = self
+            .anisette_generator
+            .get_anisette_data(self.grandslam_client.clone())
+            .await
+            .context("Failed to get anisette data for 2FA")?;
+        let url = format!(
+            "https://gsa.apple.com/auth/verify/device/{}/securitycode",
+            device_id
+        );
+        let request = match code {
+            None => self.grandslam_client.put_sms(&url)?,
+            Some(code) => self
+                .grandslam_client
+                .post_sms(&url)?
+                .body(serde_json::json!({ "code": code }).to_string()),
+        };
+        let res = request
+            .headers(self.build_2fa_headers(&anisette_data).await?)
+            .send()
+            .await
+            .context("Failed to reach legacy 2FA endpoint")?;
+        let status = res.status();
+        if !status.is_success() {
+            let text = res.text().await.unwrap_or_default();
+            bail!("Legacy 2FA request failed (status {}): {}", status, text);
+        }
+        Ok(())
+    }
+
     async fn get_trusted_numbers(&mut self) -> Result<Vec<TrustedNumber>, Report> {
         let anisette_data = self
             .anisette_generator
@@ -678,11 +727,34 @@ impl AppleAccount {
             return Ok(numbers);
         }
 
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(device_id) = Self::hsa_sms_device_id(&json)
+        {
+            debug!(
+                "Legacy hsa account, SMS goes to trusted device {}",
+                device_id
+            );
+            self.hsa_sms_device_id = Some(device_id);
+            return Ok(Vec::new());
+        }
+
         bail!(
             "Failed to retrieve trusted phone numbers (status {}): {}",
             status,
             text
         );
+    }
+
+    /// The id of the SMS entry in a legacy ("hsa") `/auth` reply, e.g.
+    /// `{"trustedDevices": [{"id": "-1234567890", "type": "sms", ...}], "authType": "hsa"}`
+    fn hsa_sms_device_id(json: &serde_json::Value) -> Option<String> {
+        json.get("trustedDevices")?
+            .as_array()?
+            .iter()
+            .find(|d| d.get("type").and_then(|t| t.as_str()) == Some("sms"))?
+            .get("id")?
+            .as_str()
+            .map(str::to_string)
     }
 
     fn select_number(&self, selected_number_id: u32) -> Result<LoginState, Report> {
