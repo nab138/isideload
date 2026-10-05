@@ -198,6 +198,7 @@ async fn main() {
             app_path,
             true,
             None::<fn(f32) -> std::future::Ready<()>>,
+            None,
         )
         .await;
     match result {

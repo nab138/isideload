@@ -64,6 +64,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
     }
 
     /// Sign the app at the provided path and return the path to the signed app bundle (in a temp dir). To sign and install, see [`Self::install_app`].
+    /// `pairing_file` is the optional pairing file to be encrypted and placed in the bundle if installing AltStore.
     pub async fn sign_app<F, Fut>(
         &mut self,
         app_path: PathBuf,
@@ -71,6 +72,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         // this will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
         progress_callback: Option<F>,
+        pairing_file: Option<&[u8]>,
     ) -> Result<(PathBuf, Option<SpecialApp>), Report>
     where
         F: Fn(f32) -> Fut,
@@ -158,7 +160,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
         info!("App IDs configured");
 
-        app.apply_special_app_behavior(&special, &group_identifier, &cert_identity)
+        app.apply_special_app_behavior(&special, &group_identifier, &cert_identity, pairing_file)
             .await
             .context("Failed to modify app bundle")?;
 
@@ -233,6 +235,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
     #[cfg(feature = "install")]
     /// Sign and install an app to a device.
     /// This is more intended to be a helper function for simple use cases, for more complex scenarios you should call `sign_app` and `install_app` separately.
+    /// `pairing_file` is the optional pairing file to be encrypted and placed in the bundle if installing AltStore.
     pub async fn install_app<F, Fut>(
         &mut self,
         device_provider: &impl IdeviceProvider,
@@ -240,6 +243,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         // this is gross but will be replaced with proper entitlement handling later
         increased_memory_limit: bool,
         progress_callback: Option<F>,
+        pairing_file: Option<&[u8]>,
     ) -> Result<Option<SpecialApp>, Report>
     where
         F: Fn(f32) -> Fut,
@@ -258,6 +262,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
                 Some(team),
                 increased_memory_limit,
                 progress_callback,
+                pairing_file,
             )
             .await?;
 
