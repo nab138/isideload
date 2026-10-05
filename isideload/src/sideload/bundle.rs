@@ -94,6 +94,21 @@ impl Bundle {
     }
 
     pub fn set_bundle_identifier(&mut self, id: &str) {
+        let old_id = self.bundle_identifier().and_then(|s| Some(s.to_string()));
+        if let Some(Value::Array(bg_tasks)) =
+            self.app_info.get_mut("BGTaskSchedulerPermittedIdentifiers")
+        {
+            for task in bg_tasks.iter_mut() {
+                if let Value::String(task_id) = task {
+                    if let Some(old_bundle_id) = &old_id {
+                        if task_id.contains(old_bundle_id) {
+                            *task_id = task_id.replace(old_bundle_id, id);
+                        }
+                    }
+                }
+            }
+        }
+
         self.app_info.insert(
             "CFBundleIdentifier".to_string(),
             Value::String(id.to_string()),
