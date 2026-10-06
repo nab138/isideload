@@ -227,7 +227,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
             &mut app,
             &cert_identity,
             &main_provisioning_profile,
-            &provisioning_profiles,
+            &mut provisioning_profiles,
             &special,
             &team,
             progress_callback,

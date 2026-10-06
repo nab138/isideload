@@ -6,6 +6,7 @@ use apple_codesign_quick::{
 
 use plist::Dictionary;
 use rootcause::prelude::*;
+use tracing::warn;
 
 use crate::{
     dev::{app_ids::Profile, teams::DeveloperTeam},
@@ -19,7 +20,7 @@ pub async fn sign<F, Fut>(
     app: &mut Application,
     cert_identity: &CertificateIdentity,
     main_provisioning_profile: &Profile,
-    all_profiles: &Vec<(String, Profile, Dictionary)>,
+    all_profiles: &mut Vec<(String, Profile, Dictionary)>,
     special: &Option<SpecialApp>,
     team: &DeveloperTeam,
     progress_callback: Option<F>,
@@ -59,8 +60,20 @@ where
 
         entitlements.insert(
             "keychain-access-groups".to_string(),
-            plist::Value::Array(keychain_access),
+            plist::Value::Array(keychain_access.clone()),
         );
+
+        let liveprocess_profile = all_profiles
+            .iter_mut()
+            .find(|(bundle_id, _, _)| bundle_id.ends_with("LiveProcess"));
+        if let Some((_, _, liveprocess_entitlements)) = liveprocess_profile {
+            liveprocess_entitlements.insert(
+                "keychain-access-groups".to_string(),
+                plist::Value::Array(keychain_access),
+            );
+        } else {
+            warn!("Could not find LiveProcess profile");
+        }
     }
 
     let mut settings = BundleSigningSettings::new(&team.team_id, entitlements, Some(&signer));
