@@ -280,6 +280,15 @@ impl Application {
                     "ALTAppGroups".to_string(),
                     plist::Value::Array(vec![plist::Value::String(group_identifier.to_string())]),
                 );
+                let extensions = self.bundle.app_extensions_mut();
+                for ext in extensions.iter_mut() {
+                    ext.app_info.insert(
+                        "ALTAppGroups".to_string(),
+                        plist::Value::Array(vec![plist::Value::String(
+                            group_identifier.to_string(),
+                        )]),
+                    );
+                }
             }
             info!("Injecting certificate for {}", special);
 
