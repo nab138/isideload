@@ -262,6 +262,7 @@ impl Application {
         group_identifier: &str,
         cert: &CertificateIdentity,
         pairing_file: Option<&[u8]>,
+        device_udid: Option<&str>,
     ) -> Result<(), Report> {
         let Some(special) = special.as_ref() else {
             return Ok(());
@@ -322,6 +323,10 @@ impl Application {
                 .ok_or_report()
                 .context("Pairing file is required for AltStore, but was not provided")?;
 
+            let device_udid = device_udid
+                .ok_or_report()
+                .context("Device UDID is required for AltStore, but was not provided")?;
+
             info!("Injecting pairing file for AltStore");
 
             let key_bytes = Sha256::digest(cert.machine_id.as_bytes());
@@ -340,6 +345,11 @@ impl Application {
                     .context(format!("Failed to create {}", ALT_PAIRING_FILE))?;
             file.write_all(&sealed_box)
                 .context(format!("Failed to write {}", ALT_PAIRING_FILE))?;
+
+            self.bundle.app_info.insert(
+                "ALTDeviceId".to_string(),
+                plist::Value::String(device_udid.to_string()),
+            );
         }
         Ok(())
     }

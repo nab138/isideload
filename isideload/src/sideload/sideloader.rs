@@ -65,6 +65,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
     /// Sign the app at the provided path and return the path to the signed app bundle (in a temp dir). To sign and install, see [`Self::install_app`].
     /// `pairing_file` is the optional pairing file to be encrypted and placed in the bundle if installing AltStore.
+    /// `device_udid` is the optional device UDID to be used for AltStore pairing file injection.
     pub async fn sign_app<F, Fut>(
         &mut self,
         app_path: PathBuf,
@@ -73,6 +74,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         increased_memory_limit: bool,
         progress_callback: Option<F>,
         pairing_file: Option<&[u8]>,
+        device_udid: Option<&str>,
     ) -> Result<(PathBuf, Option<SpecialApp>), Report>
     where
         F: Fn(f32) -> Fut,
@@ -160,9 +162,15 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
         info!("App IDs configured");
 
-        app.apply_special_app_behavior(&special, &group_identifier, &cert_identity, pairing_file)
-            .await
-            .context("Failed to modify app bundle")?;
+        app.apply_special_app_behavior(
+            &special,
+            &group_identifier,
+            &cert_identity,
+            pairing_file,
+            device_udid,
+        )
+        .await
+        .context("Failed to modify app bundle")?;
 
         let main_provisioning_profile = self
             .dev_session
@@ -236,6 +244,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
     /// Sign and install an app to a device.
     /// This is more intended to be a helper function for simple use cases, for more complex scenarios you should call `sign_app` and `install_app` separately.
     /// `pairing_file` is the optional pairing file to be encrypted and placed in the bundle if installing AltStore.
+    /// `device_udid` is the optional device UDID to be used for AltStore pairing file injection.
     pub async fn install_app<F, Fut>(
         &mut self,
         device_provider: &impl IdeviceProvider,
@@ -263,6 +272,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
                 increased_memory_limit,
                 progress_callback,
                 pairing_file,
+                Some(&device_info.udid),
             )
             .await?;
 
