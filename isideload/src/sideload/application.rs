@@ -319,37 +319,41 @@ impl Application {
         }
 
         if matches!(special, SpecialApp::AltStore) {
-            let pairing_file = pairing_file
-                .ok_or_report()
-                .context("Pairing file is required for AltStore, but was not provided")?;
+            if let Some(pairing_file) = pairing_file {
+                info!("Injecting pairing file for AltStore");
 
-            let device_udid = device_udid
-                .ok_or_report()
-                .context("Device UDID is required for AltStore, but was not provided")?;
+                let key_bytes = Sha256::digest(cert.machine_id.as_bytes());
 
-            info!("Injecting pairing file for AltStore");
+                let cipher = Aes256Gcm::new(&key_bytes);
 
-            let key_bytes = Sha256::digest(cert.machine_id.as_bytes());
+                let nonce = Nonce::generate();
+                let ciphertext = cipher.encrypt(&nonce, pairing_file)?;
 
-            let cipher = Aes256Gcm::new(&key_bytes);
+                let mut sealed_box = Vec::with_capacity(nonce.len() + ciphertext.len());
+                sealed_box.extend_from_slice(&nonce);
+                sealed_box.extend_from_slice(&ciphertext);
 
-            let nonce = Nonce::generate();
-            let ciphertext = cipher.encrypt(&nonce, pairing_file)?;
+                let mut file =
+                    isideload_vfs::fs::File::create(&self.bundle.bundle_dir.join(ALT_PAIRING_FILE))
+                        .context(format!("Failed to create {}", ALT_PAIRING_FILE))?;
+                file.write_all(&sealed_box)
+                    .context(format!("Failed to write {}", ALT_PAIRING_FILE))?;
+            } else {
+                warn!(
+                    "Pairing file is required for AltStore remote AltServer setup, but was not provided"
+                )
+            }
 
-            let mut sealed_box = Vec::with_capacity(nonce.len() + ciphertext.len());
-            sealed_box.extend_from_slice(&nonce);
-            sealed_box.extend_from_slice(&ciphertext);
-
-            let mut file =
-                isideload_vfs::fs::File::create(&self.bundle.bundle_dir.join(ALT_PAIRING_FILE))
-                    .context(format!("Failed to create {}", ALT_PAIRING_FILE))?;
-            file.write_all(&sealed_box)
-                .context(format!("Failed to write {}", ALT_PAIRING_FILE))?;
-
-            self.bundle.app_info.insert(
-                "ALTDeviceId".to_string(),
-                plist::Value::String(device_udid.to_string()),
-            );
+            if let Some(device_udid) = device_udid {
+                self.bundle.app_info.insert(
+                    "ALTDeviceId".to_string(),
+                    plist::Value::String(device_udid.to_string()),
+                );
+            } else {
+                warn!(
+                    "Device UDID is required for AltStore remote AltServer setup, but was not provided"
+                )
+            }
         }
         Ok(())
     }
