@@ -753,50 +753,20 @@ impl AppleAccount {
         let a: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
         let a_pub = srp_client.compute_public_ephemeral(&a);
 
-        let req1 = plist!(dict {
-            "Header": {
-                "Version": "1.0.1"
-            },
-            "Request": {
-                "A2k": a_pub.clone(), // A2k = client public ephemeral
-                "cpd": cpd.clone(), // cpd = client provided data
-                "o": "init", // o = operation
-                "ps": [ // ps = protocols supported
-                    "s2k",
-                    "s2k_fo"
-                ],
-                "u": self.email.clone(), // u = username
-            }
-        });
-
-        debug!("Sending initial login request");
-
         let mut raw_response = self
-            .grandslam_client
-            .plist_request(&gs_service_url, &req1, None, self.err_429_retries)
-            .await
-            .context("Failed to send initial login request")?;
+            .send_init_request(&gs_service_url, &cpd, &a_pub)
+            .await?;
 
         if let Some(sim) = resync_sim(&raw_response) {
             debug!("Anisette resync required (hsc 434); syncing then retrying init");
-            let fresh = self
+            let fresh_anisette = self
                 .anisette_generator
                 .resync(&sim)
                 .await
                 .context("Anisette resync failed")?;
-            let req1b = plist!(dict {
-                "Header": { "Version": "1.0.1" },
-                "Request": {
-                    "A2k": a_pub,
-                    "cpd": fresh.get_client_provided_data(),
-                    "o": "init",
-                    "ps": ["s2k", "s2k_fo"],
-                    "u": self.email.clone(),
-                }
-            });
+            let fresh_cpd = fresh_anisette.get_client_provided_data();
             raw_response = self
-                .grandslam_client
-                .plist_request(&gs_service_url, &req1b, None, self.err_429_retries)
+                .send_init_request(&gs_service_url, &fresh_cpd, &a_pub)
                 .await
                 .context("Failed to send resynced init request")?;
         }
@@ -1022,6 +992,36 @@ impl AppleAccount {
         info!("Successfully retrieved app token for {}", app);
 
         Ok(app_token)
+    }
+
+    async fn send_init_request(
+        &mut self,
+        gs_service_url: &str,
+        cpd: &Dictionary,
+        a_pub: &Vec<u8>,
+    ) -> Result<Dictionary, Report> {
+        debug!("Sending initial login request");
+        let req1 = plist!(dict {
+            "Header": {
+                "Version": "1.0.1"
+            },
+            "Request": {
+                "A2k": a_pub.clone(), // A2k = client public ephemeral
+                "cpd": cpd.clone(), // cpd = client provided data
+                "o": "init", // o = operation
+                "ps": [ // ps = protocols supported
+                    "s2k", // password sent as sha256
+                    "s2k_fo" // password sent as utf8 hex string of sha256
+                ],
+                "u": self.email.clone(), // u = username
+            }
+        });
+
+        Ok(self
+            .grandslam_client
+            .plist_request(gs_service_url, &req1, None, self.err_429_retries)
+            .await
+            .context("Failed to send initial login request")?)
     }
 
     fn create_session_key(usr: &ClientVerifier<Sha256>, name: &str) -> Result<Vec<u8>, Report> {
