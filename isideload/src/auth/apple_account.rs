@@ -25,7 +25,7 @@ use rootcause::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use srp::{ClientVerifier, groups::G2048};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct AppleAccount {
     pub email: String,
@@ -223,9 +223,7 @@ impl AppleAccount {
                     return Ok(());
                 }
                 LoginState::NeedsDevice2FA => {
-                    if self.trusted_phone_numbers.is_none() {
-                        self.trusted_phone_numbers = Some(self.get_trusted_numbers().await?);
-                    }
+                    self.update_trusted_numbers().await;
                     self.send_trusted_device_2fa()
                         .await
                         .context("Failed to complete trusted device 2FA")?;
@@ -261,9 +259,7 @@ impl AppleAccount {
                     }
                 }
                 LoginState::NeedsSMS2FA(id) => {
-                    if self.trusted_phone_numbers.is_none() {
-                        self.trusted_phone_numbers = Some(self.get_trusted_numbers().await?);
-                    }
+                    self.update_trusted_numbers().await;
                     info!("SMS 2FA required");
                     self.login_state = self
                         .send_sms_2fa(id)
@@ -660,6 +656,21 @@ impl AppleAccount {
         })
     }
 
+    async fn update_trusted_numbers(&mut self) {
+        if self.trusted_phone_numbers.is_some() {
+            return;
+        }
+        match self.get_trusted_numbers().await {
+            Ok(numbers) => {
+                self.trusted_phone_numbers = Some(numbers);
+            }
+            Err(report) => {
+                // Doesn't need to be a fatal error for users who have trusted devices
+                error!("Failed to retrieve trusted phone numbers:\n{}", report);
+            }
+        };
+    }
+
     async fn get_trusted_numbers(&mut self) -> Result<Vec<TrustedNumber>, Report> {
         let anisette_data = self
             .anisette_generator
@@ -885,6 +896,23 @@ impl AppleAccount {
                 "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
                 unknown => LoginState::NeedsExtraStep(unknown.to_string()),
             });
+        }
+
+        if let Some(plist::Value::Integer(hsc)) = status.get("hsc") {
+            match hsc.as_signed() {
+                Some(200) => {}
+                Some(409) => {
+                    info!("2FA code already sent");
+                    self.update_trusted_numbers().await;
+                    return Ok(LoginState::NeedsDevice2FAVerification);
+                }
+                Some(code) => {
+                    warn!("Unknown status code {}: {:?}", code, status);
+                }
+                None => {
+                    warn!("Unknown status code (invalid integer): {:?}", status);
+                }
+            }
         }
 
         Ok(LoginState::LoggedIn)

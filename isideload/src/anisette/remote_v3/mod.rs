@@ -24,7 +24,7 @@ use crate::util::storage::{SideloadingStorage, new_storage};
 use crate::{SideloadError, anisette::remote_v3::websocket::AppWebSocket};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
-pub const ANISETTE_STATE_KEY: &str = "win_anisette_state";
+pub const ANISETTE_STATE_KEY: &str = "anisette_state";
 
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
@@ -118,17 +118,24 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
 
     // Can be hardcoded, but apple is changing things so much nowadays it makes more sense to just get it from the server
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
-        let info = self
-            .client
-            .get(format!("{}/v3/client_info", self.url))
-            .send()
-            .await
-            .context("Failed to request /v3/client_info from anisette server")?
-            .error_for_status()
-            .context("anisette server returned an error for /v3/client_info")?
-            .json::<AnisetteClientInfo>()
-            .await
-            .context("Failed to parse /v3/client_info response")?;
+        // let info = self
+        //     .client
+        //     .get(format!("{}/v3/client_info", self.url))
+        //     .send()
+        //     .await
+        //     .context("Failed to request /v3/client_info from anisette server")?
+        //     .error_for_status()
+        //     .context("anisette server returned an error for /v3/client_info")?
+        //     .json::<AnisetteClientInfo>()
+        //     .await
+        //     .context("Failed to parse /v3/client_info response")?;
+
+        let info = AnisetteClientInfo {
+            client_info:
+                "<Pixel 7> <Android;14;UQ1A.240205.002> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
+                    .to_string(),
+            user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
+        };
         Ok(info)
     }
 
