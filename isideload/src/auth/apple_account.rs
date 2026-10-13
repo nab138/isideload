@@ -116,6 +116,21 @@ struct SmsSecurityCode {
     security_code_cooldown: bool,
 }
 
+/// Extracts the resync SIM (base64 `X-Apple-I-MD-DATA`) from a GSA response that
+/// demands an anisette resync (`Status.hsc == 434`); `None` otherwise.
+fn resync_sim(resp: &plist::Dictionary) -> Option<String> {
+    use base64::prelude::*;
+    let status = resp.get("Status")?.as_dictionary()?;
+    if status.get("hsc").and_then(plist::Value::as_signed_integer) != Some(434) {
+        return None;
+    }
+    match status.get("X-Apple-I-MD-DATA")? {
+        plist::Value::Data(d) => Some(BASE64_STANDARD.encode(d)),
+        plist::Value::String(s) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 impl AppleAccount {
     /// Create a new AppleAccountBuilder with the given email
     ///
@@ -743,7 +758,7 @@ impl AppleAccount {
                 "Version": "1.0.1"
             },
             "Request": {
-                "A2k": a_pub, // A2k = client public ephemeral
+                "A2k": a_pub.clone(),
                 "cpd": cpd.clone(), // cpd = client provided data
                 "o": "init", // o = operation
                 "ps": [ // ps = protocols supported
@@ -756,11 +771,36 @@ impl AppleAccount {
 
         debug!("Sending initial login request");
 
-        let response = self
+        let mut raw_response = self
             .grandslam_client
             .plist_request(&gs_service_url, &req1, None, self.err_429_retries)
             .await
-            .context("Failed to send initial login request")?
+            .context("Failed to send initial login request")?;
+
+        if let Some(sim) = resync_sim(&raw_response) {
+            debug!("Anisette resync required (hsc 434); syncing then retrying init");
+            let fresh = self
+                .anisette_generator
+                .resync(&sim)
+                .await
+                .context("Anisette resync failed")?;
+            let req1b = plist!(dict {
+                "Header": { "Version": "1.0.1" },
+                "Request": {
+                    "A2k": a_pub,
+                    "cpd": fresh.get_client_provided_data(),
+                    "o": "init",
+                    "ps": ["s2k", "s2k_fo"],
+                    "u": self.email.clone(),
+                }
+            });
+            raw_response = self
+                .grandslam_client
+                .plist_request(&gs_service_url, &req1b, None, self.err_429_retries)
+                .await
+                .context("Failed to send resynced init request")?;
+        }
+        let response = raw_response
             .check_grandslam_error()
             .context("GrandSlam error during initial login request")?;
 
