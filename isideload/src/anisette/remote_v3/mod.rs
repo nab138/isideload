@@ -115,6 +115,7 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
         self.fetch_headers(Some(sim)).await
     }
 
+    // Can be hardcoded, but apple is changing things so much nowadays it makes more sense to just get it from the server
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
         let info = self
             .client
