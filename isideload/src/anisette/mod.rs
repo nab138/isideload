@@ -106,6 +106,10 @@ impl AnisetteData {
 pub trait AnisetteProvider {
     async fn get_anisette_data(&self) -> Result<AnisetteData, Report>;
 
+    async fn resync(&self, _sim: &str) -> Result<AnisetteData, Report> {
+        Err(report!("anisette resync not supported by this provider"))
+    }
+
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report>;
 
     async fn provision(&mut self, gs: Arc<GrandSlam>) -> Result<(), Report>;
@@ -162,5 +166,13 @@ impl AnisetteDataGenerator {
     pub async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
         let provider = self.provider.read().await;
         provider.get_client_info().await
+    }
+
+    /// Perform a login anisette resync with the server, returning corrected data.
+    pub async fn resync(&mut self, sim: &str) -> Result<Arc<AnisetteData>, Report> {
+        let provider = self.provider.read().await;
+        let data = Arc::new(provider.resync(sim).await?);
+        self.data = Some(data.clone());
+        Ok(data)
     }
 }
