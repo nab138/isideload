@@ -758,7 +758,7 @@ impl AppleAccount {
                 "Version": "1.0.1"
             },
             "Request": {
-                "A2k": a_pub.clone(),
+                "A2k": a_pub.clone(), // A2k = client public ephemeral
                 "cpd": cpd.clone(), // cpd = client provided data
                 "o": "init", // o = operation
                 "ps": [ // ps = protocols supported
