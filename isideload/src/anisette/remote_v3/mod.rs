@@ -24,6 +24,7 @@ use crate::util::storage::{SideloadingStorage, new_storage};
 use crate::{SideloadError, anisette::remote_v3::websocket::AppWebSocket};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.stikstore.app";
+pub const ANISETTE_STATE_KEY: &str = "win_anisette_state";
 
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
@@ -201,7 +202,7 @@ impl RemoteV3AnisetteProvider {
 
     async fn get_state(&mut self, gs: Arc<GrandSlam>) -> Result<&mut AnisetteState, Report> {
         if self.state.is_none() {
-            if let Ok(Some(state)) = &self.storage.retrieve_data("anisette_state") {
+            if let Ok(Some(state)) = &self.storage.retrieve_data(ANISETTE_STATE_KEY) {
                 if let Ok(state) = plist::from_bytes(state) {
                     info!("Loaded existing anisette state");
                     self.state = Some(state);
@@ -226,7 +227,7 @@ impl RemoteV3AnisetteProvider {
         let mut writer = std::io::BufWriter::new(buf);
         plist::to_writer_xml(&mut writer, &state)?;
         self.storage
-            .store_data("anisette_state", &writer.into_inner()?)?;
+            .store_data(ANISETTE_STATE_KEY, &writer.into_inner()?)?;
 
         Ok(state)
     }

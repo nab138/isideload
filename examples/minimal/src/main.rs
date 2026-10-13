@@ -109,6 +109,7 @@ async fn main() {
         .anisette_provider(
             RemoteV3AnisetteProvider::default()
                 .unwrap()
+                .set_url("https://ani.jkcoxson.com")
                 .set_serial_number("2".to_string()),
         )
         .login(apple_password, get_2fa_code)
