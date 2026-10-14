@@ -16,15 +16,18 @@ use rootcause::prelude::*;
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
-use crate::anisette::remote_v3::{state::AnisetteState, websocket::WsMessage};
+use crate::anisette::remote_v3::websocket::AppWebSocket;
 use crate::anisette::{AnisetteClientInfo, AnisetteData, AnisetteProvider};
+use crate::anisette::{
+    AnisetteDataResponse,
+    remote_v3::{state::AnisetteState, websocket::WsMessage},
+};
 use crate::auth::grandslam::GrandSlam;
 use crate::util::plist::PlistDataExtract;
 use crate::util::storage::{SideloadingStorage, new_storage};
-use crate::{SideloadError, anisette::remote_v3::websocket::AppWebSocket};
 
 pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.jkcoxson.com";
-pub const ANISETTE_STATE_KEY: &str = "windows_anisette_state";
+pub const ANISETTE_STATE_KEY: &str = "anisette_state";
 
 pub struct RemoteV3AnisetteProvider {
     pub state: Option<AnisetteState>,
@@ -108,11 +111,11 @@ impl RemoteV3AnisetteProvider {
 #[cfg_attr(feature = "wasm", async_trait::async_trait(?Send))]
 #[cfg_attr(not(feature = "wasm"), async_trait::async_trait)]
 impl AnisetteProvider for RemoteV3AnisetteProvider {
-    async fn get_anisette_data(&self) -> Result<AnisetteData, Report> {
+    async fn get_anisette_data(&self) -> Result<AnisetteDataResponse, Report> {
         self.fetch_headers(None).await
     }
 
-    async fn resync(&self, sim: &str) -> Result<AnisetteData, Report> {
+    async fn resync(&self, sim: &str) -> Result<AnisetteDataResponse, Report> {
         self.fetch_headers(Some(sim)).await
     }
 
@@ -139,31 +142,23 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
         Ok(info)
     }
 
-    fn needs_provisioning(&self) -> Result<bool, Report> {
-        if let Some(state) = &self.state {
-            Ok(!state.is_provisioned())
-        } else {
-            Ok(true)
-        }
-    }
-
-    async fn provision(&mut self, gs: Arc<GrandSlam>) -> Result<(), Report> {
+    async fn provision(&mut self, gs: &Arc<GrandSlam>, force_reset: bool) -> Result<(), Report> {
         self.get_client_info().await?;
-        self.get_state(gs).await?;
+        self.get_state(gs, force_reset).await?;
         Ok(())
     }
 }
 
 impl RemoteV3AnisetteProvider {
-    async fn fetch_headers(&self, sim: Option<&str>) -> Result<AnisetteData, Report> {
-        let state = self
-            .state
-            .as_ref()
-            .ok_or(SideloadError::AnisetteNotProvisioned)?;
-        let adi_pb = state
-            .adi_pb
-            .as_ref()
-            .ok_or(SideloadError::AnisetteNotProvisioned)?;
+    async fn fetch_headers(&self, sim: Option<&str>) -> Result<AnisetteDataResponse, Report> {
+        let Some(state) = self.state.as_ref() else {
+            return Ok(AnisetteDataResponse::NeedsProvisioning);
+        };
+
+        let Some(adi_pb) = state.adi_pb.as_ref() else {
+            return Ok(AnisetteDataResponse::NeedsProvisioning);
+        };
+
         let client_info = self.get_client_info().await?;
 
         let mut body = serde_json::json!({
@@ -192,7 +187,7 @@ impl RemoteV3AnisetteProvider {
                 machine_id,
                 one_time_password,
                 routing_info,
-            } => Ok(AnisetteData {
+            } => Ok(AnisetteDataResponse::Data(AnisetteData {
                 machine_id,
                 one_time_password,
                 routing_info,
@@ -200,15 +195,26 @@ impl RemoteV3AnisetteProvider {
                 device_unique_identifier: state.get_device_id(),
                 _local_user_id: hex::encode(state.get_md_lu()),
                 generated_at: SystemTime::now(),
-            }),
+            })),
             AnisetteHeaders::GetHeadersError { message } => {
+                if message.contains("-45061") {
+                    warn!("Server says anisette not provisioned");
+                    return Ok(AnisetteDataResponse::IncorrectlyProvisioned);
+                }
                 Err(report!("Failed to get anisette headers").attach(message))
             }
         }
     }
 
-    async fn get_state(&mut self, gs: Arc<GrandSlam>) -> Result<&mut AnisetteState, Report> {
-        if self.state.is_none() {
+    async fn get_state(
+        &mut self,
+        gs: &Arc<GrandSlam>,
+        force_reset: bool,
+    ) -> Result<&mut AnisetteState, Report> {
+        if force_reset {
+            warn!("Resetting anisette state");
+            self.state = Some(AnisetteState::new());
+        } else if self.state.is_none() {
             if let Ok(Some(state)) = &self.storage.retrieve_data(ANISETTE_STATE_KEY) {
                 if let Ok(state) = plist::from_bytes(state) {
                     info!("Loaded existing anisette state");
@@ -266,7 +272,7 @@ impl RemoteV3AnisetteProvider {
     }
     async fn provision(
         state: &mut AnisetteState,
-        gs: Arc<GrandSlam>,
+        gs: &Arc<GrandSlam>,
         url: &str,
         proxy_url: Option<&str>,
     ) -> Result<(), Report> {
