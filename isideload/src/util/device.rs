@@ -4,11 +4,16 @@ use rootcause::prelude::*;
 pub struct IdeviceInfo {
     pub name: String,
     pub udid: String,
+    pub product_type: Option<String>,
 }
 
 impl IdeviceInfo {
     pub fn new(name: String, udid: String) -> Self {
-        Self { name, udid }
+        Self {
+            name,
+            udid,
+            product_type: None,
+        }
     }
 
     pub async fn from_device(device: &impl IdeviceProvider) -> Result<Self, Report> {
@@ -39,6 +44,16 @@ impl IdeviceInfo {
             .ok_or_else(|| report!("Device UDID is not a string"))?
             .to_string();
 
-        Ok(Self::new(device_name, device_udid))
+        let product_type = lockdown
+            .get_value(Some("ProductType"), None)
+            .await
+            .ok()
+            .and_then(|value| value.as_string().map(str::to_string));
+
+        Ok(Self {
+            name: device_name,
+            udid: device_udid,
+            product_type,
+        })
     }
 }

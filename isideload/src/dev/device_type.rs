@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+use plist::{Dictionary, Value};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeveloperDeviceType {
     Any,
     Ios,
@@ -11,8 +13,30 @@ impl DeveloperDeviceType {
         match self {
             DeveloperDeviceType::Any => "",
             DeveloperDeviceType::Ios => "ios/",
-            DeveloperDeviceType::Tvos => "tvos/",
+            // tvOS is served by the iOS service path and selects itself with the
+            // `subPlatform` request field instead.
+            DeveloperDeviceType::Tvos => "ios/",
             DeveloperDeviceType::Watchos => "watchos/",
+        }
+    }
+
+    /// Add the request fields that select this platform.
+    pub fn apply_platform_fields(&self, body: &mut Dictionary) {
+        if let DeveloperDeviceType::Tvos = self {
+            body.insert("subPlatform".into(), Value::String("tvOS".into()));
+        }
+    }
+}
+
+impl From<Option<&str>> for DeveloperDeviceType {
+    /// Map a lockdown `ProductType` (e.g. `AppleTV6,2`) to a developer device type.
+    ///
+    /// A missing `ProductType` is treated as iOS.
+    fn from(product_type: Option<&str>) -> Self {
+        match product_type {
+            Some(product_type) if product_type.starts_with("AppleTV") => Self::Tvos,
+            Some(product_type) if product_type.starts_with("Watch") => Self::Watchos,
+            _ => Self::Ios,
         }
     }
 }
