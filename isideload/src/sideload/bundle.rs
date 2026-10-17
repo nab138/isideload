@@ -124,6 +124,21 @@ impl Bundle {
         &self.frameworks
     }
 
+    // Rewrites the stored path of this bundle and its sub-bundles when a parent
+    // directory has been renamed on disk, so that they keep pointing at valid
+    // locations.
+    pub fn rebase_bundle_dir(&mut self, old_dir: &std::path::Path, new_dir: &std::path::Path) {
+        if let Ok(rel) = self.bundle_dir.strip_prefix(old_dir) {
+            self.bundle_dir = new_dir.join(rel);
+        }
+        for ext in &mut self.app_extensions {
+            ext.rebase_bundle_dir(old_dir, new_dir);
+        }
+        for fw in &mut self.frameworks {
+            fw.rebase_bundle_dir(old_dir, new_dir);
+        }
+    }
+
     pub fn frameworks_mut(&mut self) -> &mut [Bundle] {
         &mut self.frameworks
     }

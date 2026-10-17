@@ -100,6 +100,18 @@ impl Application {
         })
     }
 
+    // tvOS rejects bundles whose directory or executable path contains a space
+    // during signature verification (0xe8008015), while iOS does not. Rename the
+    // bundle directory and its executables to strip spaces for signing, keeping
+    // the plist bundle name (CFBundleName/CFBundleDisplayName) untouched.
+    pub fn sanitize_signing_names(&mut self) -> Result<(), Report> {
+        sanitize_bundle_paths(&mut self.bundle)?;
+        for bundle in self.bundle.app_extensions_mut() {
+            sanitize_bundle_paths(bundle)?;
+        }
+        Ok(())
+    }
+
     pub fn get_special_app(&self) -> Option<SpecialApp> {
         let bundle_id = self.bundle.bundle_identifier().unwrap_or("");
         let special_app = match bundle_id {
@@ -330,5 +342,60 @@ impl std::fmt::Display for SpecialApp {
             SpecialApp::AltStore => write!(f, "AltStore"),
             SpecialApp::StikStore => write!(f, "StikStore"),
         }
+    }
+}
+
+fn sanitize_bundle_paths(bundle: &mut Bundle) -> Result<(), Report> {
+    let parent = bundle.bundle_dir.parent().ok_or_report()?.to_path_buf();
+    let folder_name = bundle
+        .bundle_dir
+        .file_stem()
+        .ok_or_report()?
+        .to_string_lossy()
+        .to_string();
+    let clean_folder = sanitize_name(&folder_name);
+    if clean_folder != folder_name {
+        let new_dir = parent.join(format!("{}.app", clean_folder));
+        if new_dir != bundle.bundle_dir {
+            let old_dir = bundle.bundle_dir.clone();
+            isideload_vfs::fs::rename(&old_dir, &new_dir)
+                .context(format!("Failed to rename bundle directory {:?}", old_dir))?;
+            bundle.rebase_bundle_dir(&old_dir, &new_dir);
+        }
+    }
+
+    let executable = bundle
+        .app_info
+        .get("CFBundleExecutable")
+        .and_then(|v| v.as_string())
+        .map(str::to_string)
+        .unwrap_or_else(|| folder_name.clone());
+    let clean_exec = sanitize_name(&executable);
+    if clean_exec != executable {
+        let new_executable = bundle.bundle_dir.join(&clean_exec);
+        let old_executable = bundle.bundle_dir.join(&executable);
+        if isideload_vfs::fs::metadata(&old_executable).is_ok() && old_executable != new_executable
+        {
+            isideload_vfs::fs::rename(&old_executable, &new_executable)
+                .context(format!("Failed to rename executable {:?}", old_executable))?;
+        }
+        bundle.app_info.insert(
+            "CFBundleExecutable".to_string(),
+            plist::Value::String(clean_exec),
+        );
+    }
+
+    Ok(())
+}
+
+fn sanitize_name(name: &str) -> String {
+    let clean: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-')
+        .collect();
+    if clean.is_empty() {
+        "App".to_string()
+    } else {
+        clean
     }
 }

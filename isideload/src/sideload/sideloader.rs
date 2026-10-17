@@ -96,6 +96,9 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         }
 
         let mut app = Application::new(app_path)?;
+        if self.dev_session.device_type() == crate::dev::device_type::DeveloperDeviceType::Tvos {
+            app.sanitize_signing_names()?;
+        }
         let special = app.get_special_app();
 
         let main_bundle_id = app.main_bundle_id()?;

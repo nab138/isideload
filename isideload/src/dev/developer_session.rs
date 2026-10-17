@@ -71,7 +71,11 @@ impl DeveloperSession {
 
     /// Set the platform selected for subsequent developer service requests.
     pub fn set_device_type(&mut self, device_type: DeveloperDeviceType) {
-        self.device_type = device_type;
+        self.device_type = device_type.clone();
+    }
+
+    pub fn device_type(&self) -> DeveloperDeviceType {
+        self.device_type.clone()
     }
 
     pub async fn get_headers(&mut self) -> Result<HeaderMap, Report> {
