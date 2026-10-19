@@ -3,6 +3,7 @@ use std::pin::Pin;
 use crate::{
     auth::apple_account::{TwoFactorCallbackParams, TwoFactorCallbackResponse},
     dev::certificates::DevelopmentCertificate,
+    sideload::{builder::ExtensionsBehavior, bundle::Bundle},
 };
 use rootcause::prelude::*;
 
@@ -43,6 +44,18 @@ where
     type Future = Fut;
 }
 
+pub trait ExtensionsBehaviorCallback: Fn(&[Bundle]) -> Self::Future + Send + Sync {
+    type Future: Future<Output = Result<ExtensionsBehavior, Report>> + MaybeSend;
+}
+
+impl<C, Fut> ExtensionsBehaviorCallback for C
+where
+    C: Fn(&[Bundle]) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<ExtensionsBehavior, Report>> + MaybeSend,
+{
+    type Future = Fut;
+}
+
 // annoyingly, we can't use MaybeSend here because it isn't an auto trait, so we have to do it manually
 #[cfg(not(target_arch = "wasm32"))]
 pub type MaxCertsCallbackFuture =
@@ -52,6 +65,18 @@ pub type MaxCertsCallbackFuture =
 pub type MaxCertsCallbackFuture =
     Pin<Box<dyn Future<Output = Result<Option<Vec<String>>, Report>> + 'static>>;
 
+// annoyingly, we can't use MaybeSend here because it isn't an auto trait, so we have to do it manually
+#[cfg(not(target_arch = "wasm32"))]
+pub type ExtensionsBehaviorCallbackFuture =
+    Pin<Box<dyn Future<Output = Result<ExtensionsBehavior, Report>> + Send + 'static>>;
+
+#[cfg(target_arch = "wasm32")]
+pub type ExtensionsBehaviorCallbackFuture =
+    Pin<Box<dyn Future<Output = Result<ExtensionsBehavior, Report>> + 'static>>;
+
 // Helper types for when it makes more sense to use a concrete boxed callback instead of a generic type parameter
 pub type MaxCertsCallbackBox =
     Box<dyn Fn(Vec<DevelopmentCertificate>) -> MaxCertsCallbackFuture + Send + Sync + 'static>;
+
+pub type ExtensionsBehaviorCallbackBox =
+    Box<dyn Fn(&[Bundle]) -> ExtensionsBehaviorCallbackFuture + Send + Sync + 'static>;

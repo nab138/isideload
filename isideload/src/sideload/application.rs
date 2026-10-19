@@ -5,6 +5,7 @@ use crate::SideloadError;
 use crate::dev::app_ids::{AppId, AppIdsApi};
 use crate::dev::developer_session::DeveloperSession;
 use crate::dev::teams::DeveloperTeam;
+use crate::sideload::builder::ExtensionsBehavior;
 use crate::sideload::bundle::Bundle;
 use crate::sideload::cert_identity::CertificateIdentity;
 use aes_gcm::{
@@ -188,13 +189,21 @@ impl Application {
 
     pub async fn register_app_ids(
         &self,
-        //mode: &ExtensionsBehavior,
+        mode: &ExtensionsBehavior,
         dev_session: &mut DeveloperSession,
         team: &DeveloperTeam,
     ) -> Result<Vec<AppId>, Report> {
-        let extension_refs: Vec<_> = self.bundle.app_extensions().iter().collect();
         let mut bundles_with_app_id = vec![&self.bundle];
-        bundles_with_app_id.extend(extension_refs);
+
+        match mode {
+            ExtensionsBehavior::ReuseMain => {
+                // nothing to do
+            }
+            ExtensionsBehavior::RegisterAll => {
+                let extension_refs: Vec<_> = self.bundle.app_extensions().iter().collect();
+                bundles_with_app_id.extend(extension_refs);
+            }
+        }
 
         let list_app_ids_response = dev_session
             .list_app_ids(team, None)

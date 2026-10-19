@@ -9,11 +9,15 @@ use crate::{
     sideload::{
         TeamSelection,
         application::{Application, SpecialApp},
-        builder::MaxCertsBehavior,
+        builder::{ExtensionsBehavior, ExtensionsBehaviorSelection, MaxCertsBehavior},
         cert_identity::CertificateIdentity,
         sign,
     },
-    util::{callbacks::MaxCertsCallback, device::IdeviceInfo, storage::SideloadingStorage},
+    util::{
+        callbacks::{ExtensionsBehaviorCallback, MaxCertsCallback},
+        device::IdeviceInfo,
+        storage::SideloadingStorage,
+    },
 };
 
 use std::path::PathBuf;
@@ -24,19 +28,19 @@ use plist::Dictionary;
 use rootcause::{option_ext::OptionExt, prelude::*};
 use tracing::info;
 
-pub struct Sideloader<C: MaxCertsCallback> {
+pub struct Sideloader<C: MaxCertsCallback, E: ExtensionsBehaviorCallback> {
     team_selection: TeamSelection,
     storage: Box<dyn SideloadingStorage>,
     dev_session: DeveloperSession,
     machine_name: String,
     apple_email: String,
     max_certs_behavior: MaxCertsBehavior<C>,
-    //extensions_behavior: ExtensionsBehavior,
+    extensions_behavior: ExtensionsBehaviorSelection<E>,
     delete_app_after_install: bool,
     team: Option<DeveloperTeam>,
 }
 
-impl<C: MaxCertsCallback> Sideloader<C> {
+impl<C: MaxCertsCallback, E: ExtensionsBehaviorCallback> Sideloader<C, E> {
     /// Construct a new `Sideloader` instance with the provided configuration
     ///
     /// See [`crate::sideload::SideloaderBuilder`] for more details and a more convenient way to construct a `Sideloader`.
@@ -47,7 +51,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         max_certs_behavior: MaxCertsBehavior<C>,
         machine_name: String,
         storage: Box<dyn SideloadingStorage>,
-        //extensions_behavior: ExtensionsBehavior,
+        extensions_behavior: ExtensionsBehaviorSelection<E>,
         delete_app_after_install: bool,
     ) -> Self {
         Sideloader {
@@ -57,7 +61,7 @@ impl<C: MaxCertsCallback> Sideloader<C> {
             machine_name,
             apple_email,
             max_certs_behavior,
-            //extensions_behavior,
+            extensions_behavior,
             delete_app_after_install,
             team: None,
         }
@@ -106,11 +110,13 @@ impl<C: MaxCertsCallback> Sideloader<C> {
         let main_app_name = app.main_app_name()?;
         let main_app_id_str = format!("{}.{}", main_bundle_id, team.team_id);
         app.update_bundle_id(&main_bundle_id, &main_app_id_str)?;
+
+        let extensions_behavior = self
+            .extensions_behavior
+            .behavior(app.bundle.app_extensions())
+            .await?;
         let mut app_ids = app
-            .register_app_ids(
-                /*&self.extensions_behavior, */ &mut self.dev_session,
-                &team,
-            )
+            .register_app_ids(&extensions_behavior, &mut self.dev_session, &team)
             .await?;
         let main_app_id = match app_ids
             .iter()
@@ -179,25 +185,45 @@ impl<C: MaxCertsCallback> Sideloader<C> {
 
         let mut provisioning_profiles: Vec<(String, Profile, Dictionary)> = Vec::new();
 
-        for id in app_ids
-            .into_iter()
-            .filter(|id| id.identifier != main_app_id.identifier)
-        {
-            let bundle_id = id.identifier.clone();
+        match extensions_behavior {
+            ExtensionsBehavior::ReuseMain => {
+                // For each extension bundle id, push the main provisioning profile and entitlements to the provisioning_profiles vector
+                let main_entitlements =
+                    ProvisioningProfile::parse(main_provisioning_profile.encoded_profile.as_ref())?
+                        .entitlements()
+                        .clone();
+                let extensions = app.bundle.app_extensions();
+                for ext in extensions {
+                    provisioning_profiles.push((
+                        ext.bundle_identifier().unwrap_or_default().to_string(),
+                        main_provisioning_profile.clone(),
+                        main_entitlements.clone(),
+                    ));
+                }
+            }
+            ExtensionsBehavior::RegisterAll => {
+                for id in app_ids
+                    .into_iter()
+                    .filter(|id| id.identifier != main_app_id.identifier)
+                {
+                    let bundle_id = id.identifier.clone();
 
-            let profile = self
-                .dev_session
-                .download_team_provisioning_profile(&team, &id, None)
-                .await
-                .context(format!(
-                    "Failed to download provisioning profile for {}",
-                    bundle_id
-                ))?;
+                    let profile = self
+                        .dev_session
+                        .download_team_provisioning_profile(&team, &id, None)
+                        .await
+                        .context(format!(
+                            "Failed to download provisioning profile for {}",
+                            bundle_id
+                        ))?;
 
-            let parsed_profile = ProvisioningProfile::parse(profile.encoded_profile.as_ref())?;
-            let entitlements = parsed_profile.entitlements().clone();
+                    let parsed_profile =
+                        ProvisioningProfile::parse(profile.encoded_profile.as_ref())?;
+                    let entitlements = parsed_profile.entitlements().clone();
 
-            provisioning_profiles.push((bundle_id, profile, entitlements));
+                    provisioning_profiles.push((bundle_id, profile, entitlements));
+                }
+            }
         }
 
         if let Some(callback) = &progress_callback {
