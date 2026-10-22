@@ -26,7 +26,7 @@ use crate::auth::grandslam::GrandSlam;
 use crate::util::plist::PlistDataExtract;
 use crate::util::storage::{SideloadingStorage, new_storage};
 
-pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.jkcoxson.com";
+pub const DEFAULT_ANISETTE_V3_URL: &str = "https://ani.iloader.app";
 pub const ANISETTE_STATE_KEY: &str = "anisette_state";
 
 pub struct RemoteV3AnisetteProvider {
