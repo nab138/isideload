@@ -51,7 +51,7 @@ impl GrandSlam {
     /// Fetch the URL bag from GrandSlam and cache it
     pub async fn fetch_url_bag(
         client: &reqwest_middleware::ClientWithMiddleware,
-        mut base_headers: HeaderMap,
+        base_headers: HeaderMap,
     ) -> Result<Dictionary, Report> {
         debug!("Fetching URL bag from GrandSlam");
         // // Sending the android client info gets us the wrong url bag, so we lie for this request
