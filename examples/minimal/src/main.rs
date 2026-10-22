@@ -7,7 +7,7 @@ use isideload::{
         teams::DeveloperTeam,
     },
     sideload::{SideloaderBuilder, TeamSelection, builder::MaxCertsBehavior},
-    util::keyring_storage::KeyringStorage,
+    util::{callbacks::ExtensionsBehaviorCallbackBox, keyring_storage::KeyringStorage},
 };
 use std::{env, path::PathBuf};
 
@@ -185,12 +185,15 @@ async fn main() {
         ))
     };
 
-    let mut sideloader = SideloaderBuilder::new(dev_session, apple_id.to_string())
-        .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
-        .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
-        .storage(Box::new(KeyringStorage::new("minimal".to_string())))
-        .machine_name("isideload-minimal".to_string())
-        .build();
+    let mut sideloader = SideloaderBuilder::<_, ExtensionsBehaviorCallbackBox>::new(
+        dev_session,
+        apple_id.to_string(),
+    )
+    .team_selection(TeamSelection::PromptOnce(team_selection_prompt))
+    .max_certs_behavior(MaxCertsBehavior::Prompt(cert_selection_prompt))
+    .storage(Box::new(KeyringStorage::new("minimal".to_string())))
+    .machine_name("isideload-minimal".to_string())
+    .build();
 
     let result = sideloader
         .install_app(
