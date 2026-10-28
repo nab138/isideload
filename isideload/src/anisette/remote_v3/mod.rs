@@ -36,6 +36,7 @@ pub struct RemoteV3AnisetteProvider {
     serial_number: String,
     client: reqwest_middleware::ClientWithMiddleware,
     websocket_proxy: Option<String>,
+    client_info_override: Option<AnisetteClientInfo>,
 }
 
 impl RemoteV3AnisetteProvider {
@@ -57,6 +58,7 @@ impl RemoteV3AnisetteProvider {
             serial_number,
             client: Self::build_reqwest_client(None)?,
             websocket_proxy: None,
+            client_info_override: None,
         })
     }
 
@@ -106,6 +108,14 @@ impl RemoteV3AnisetteProvider {
         self.serial_number = serial_number;
         self
     }
+
+    pub fn set_client_info_override(
+        mut self,
+        client_info_override: Option<AnisetteClientInfo>,
+    ) -> RemoteV3AnisetteProvider {
+        self.client_info_override = client_info_override;
+        self
+    }
 }
 
 #[cfg_attr(feature = "wasm", async_trait::async_trait(?Send))]
@@ -119,8 +129,10 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
         self.fetch_headers(Some(sim)).await
     }
 
-    // Can be hardcoded, but apple is changing things so much nowadays it makes more sense to just get it from the server
     async fn get_client_info(&self) -> Result<AnisetteClientInfo, Report> {
+        if let Some(client_info_override) = self.client_info_override.as_ref() {
+            return Ok(client_info_override.clone());
+        }
         let info = self
             .client
             .get(format!("{}/v3/client_info", self.url))
@@ -132,13 +144,6 @@ impl AnisetteProvider for RemoteV3AnisetteProvider {
             .json::<AnisetteClientInfo>()
             .await
             .context("Failed to parse /v3/client_info response")?;
-
-        // let info = AnisetteClientInfo {
-        //     client_info:
-        //         "<Pixel 7> <Android;14;UQ1A.240205.002> <com.apple.AuthKit/1 (com.apple.akd/1.0)>"
-        //             .to_string(),
-        //     user_agent: "akd/1.0 CFNetwork/808.1.4".to_string(),
-        // };
         Ok(info)
     }
 
