@@ -18,8 +18,6 @@ use crate::sideload::cert_identity::APPLE_ROOT;
 use crate::{SideloadError, anisette::AnisetteClientInfo, util::plist::PlistDataExtract};
 
 const URL_BAG: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
-const URL_BAG_CLIENT_INFO: &str =
-    "<Mac15,7> <macOS;27.0;26A5378j> <com.apple.AuthKit/1 (com.apple.akd/1.0)>";
 
 pub struct GrandSlam {
     pub client: reqwest_middleware::ClientWithMiddleware,
@@ -54,11 +52,6 @@ impl GrandSlam {
         mut base_headers: HeaderMap,
     ) -> Result<Dictionary, Report> {
         debug!("Fetching URL bag from GrandSlam");
-        // Sending the android client info gets us the wrong url bag, so we lie for this request
-        base_headers.insert(
-            "X-Mme-Client-Info",
-            HeaderValue::from_str(URL_BAG_CLIENT_INFO)?,
-        );
         let resp = client
             .get(URL_BAG)
             .headers(base_headers)
