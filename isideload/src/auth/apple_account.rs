@@ -91,6 +91,9 @@ pub struct SMSTwoFactorError {
 enum SmsSendOutcome {
     Sent,
     ActiveChallenge,
+    /// Apple rejected the requested phone number id but supplied the
+    /// numbers that are actually valid on the account.
+    StaleNumber(Vec<TrustedNumber>),
     ServiceError(SMSTwoFactorError),
 }
 
@@ -502,6 +505,19 @@ impl AppleAccount {
             SmsSendOutcome::ActiveChallenge => {
                 info!("SMS 2FA challenge already active, proceeding to verification");
             }
+            SmsSendOutcome::StaleNumber(numbers) => {
+                warn!("SMS 2FA requested for unknown phone number id {}, Apple reported different trusted numbers", id);
+                if !numbers.is_empty() {
+                    self.trusted_phone_numbers = Some(numbers);
+                } else {
+                    self.update_trusted_numbers().await;
+                }
+                self.last_error = Some(
+                    "The phone number on file could not be used for SMS verification, please select a different method"
+                        .into(),
+                );
+                return Ok(LoginState::NeedsUnknown2FA);
+            }
             SmsSendOutcome::ServiceError(error) => {
                 if error.code == "-28248" {
                     warn!("{} - {}", error.title, error.message);
@@ -602,18 +618,24 @@ impl AppleAccount {
             && challenge.mode == "sms"
             && challenge.challenge_type == "verification"
             && challenge.authentication_type == "hsa2"
-            && challenge.trusted_phone_number.id == requested_number_id
-            && challenge
-                .trusted_phone_numbers
-                .iter()
-                .any(|number| number.id == requested_number_id)
             && challenge.security_code.length == 6
             && !challenge.security_code.too_many_codes_sent
             && !challenge.security_code.too_many_codes_validated
             && !challenge.security_code.security_code_locked
             && !challenge.security_code.security_code_cooldown
         {
-            return Ok(SmsSendOutcome::ActiveChallenge);
+            if challenge.trusted_phone_number.id == requested_number_id
+                && challenge
+                    .trusted_phone_numbers
+                    .iter()
+                    .any(|number| number.id == requested_number_id)
+            {
+                return Ok(SmsSendOutcome::ActiveChallenge);
+            }
+
+            return Ok(SmsSendOutcome::StaleNumber(
+                challenge.trusted_phone_numbers,
+            ));
         }
 
         bail!(
@@ -890,9 +912,16 @@ impl AppleAccount {
         if let Some(plist::Value::String(s)) = status.get("au") {
             return Ok(match s.as_str() {
                 "trustedDeviceSecondaryAuth" => LoginState::NeedsDevice2FA,
-                "secondaryAuth" => LoginState::NeedsSMS2FA(
-                    1, /* Just start by trying 1, user can correct after */
-                ),
+                "secondaryAuth" => {
+                    self.update_trusted_numbers().await;
+                    LoginState::NeedsSMS2FA(
+                        self.trusted_phone_numbers
+                            .as_ref()
+                            .and_then(|numbers| numbers.first())
+                            .map(|number| number.id)
+                            .unwrap_or(1 /* Just start by trying 1, user can correct after */),
+                    )
+                }
                 "repair" => LoginState::LoggedIn, // Just means that you don't have 2FA set up
                 unknown => LoginState::NeedsExtraStep(unknown.to_string()),
             });
