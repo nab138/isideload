@@ -1,9 +1,10 @@
+#[cfg(feature = "install")]
+use crate::{dev::devices::DevicesApi, util::device::IdeviceInfo};
 use crate::{
     dev::{
         app_groups::AppGroupsApi,
         app_ids::{AppIdsApi, Profile},
         developer_session::DeveloperSession,
-        devices::DevicesApi,
         teams::{DeveloperTeam, TeamsApi},
     },
     sideload::{
@@ -15,7 +16,6 @@ use crate::{
     },
     util::{
         callbacks::{ExtensionsBehaviorCallback, MaxCertsCallback},
-        device::IdeviceInfo,
         storage::SideloadingStorage,
     },
 };
@@ -23,6 +23,7 @@ use crate::{
 use std::path::PathBuf;
 
 use apple_codesign_quick::ProvisioningProfile;
+#[cfg(feature = "install")]
 use idevice::provider::IdeviceProvider;
 use plist::Dictionary;
 use rootcause::{option_ext::OptionExt, prelude::*};
@@ -36,6 +37,8 @@ pub struct Sideloader<C: MaxCertsCallback, E: ExtensionsBehaviorCallback> {
     apple_email: String,
     max_certs_behavior: MaxCertsBehavior<C>,
     extensions_behavior: ExtensionsBehaviorSelection<E>,
+    // Only `install_app` reads it.
+    #[cfg_attr(not(feature = "install"), allow(dead_code))]
     delete_app_after_install: bool,
     team: Option<DeveloperTeam>,
 }

@@ -29,7 +29,7 @@ plist-macro = "0.1.4"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "gzip", "rustls-no-provider", "http2", "charset", "system-proxy"] }
 thiserror = "2.0.17"
 async-trait = "0.1.89"
-serde = "1.0.228"
+serde = { version = "1.0.228", features = ["derive"] }
 rand = "0.8.5"
 uuid = {version = "1.20.0", features = ["v4"] }
 tracing = "0.1.44"
