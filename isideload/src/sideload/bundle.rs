@@ -45,23 +45,28 @@ impl Bundle {
             "Failed to parse Info.plist".to_string(),
         ))?;
 
-        // Load app extensions from PlugIns directory
-        let plug_ins_dir = bundle_path.join("PlugIns");
-        let app_extensions = if isideload_vfs::fs::metadata(&plug_ins_dir).is_ok() {
-            isideload_vfs::fs::read_dir(&plug_ins_dir)
-                .context(SideloadError::InvalidBundle(
-                    "Failed to read PlugIns directory".to_string(),
-                ))?
-                .filter_map(|entry| entry.ok())
-                .filter(|entry| {
-                    entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
-                        && isideload_vfs::fs::metadata(&entry.path().join("Info.plist")).is_ok()
-                })
-                .filter_map(|entry| Bundle::new(entry.path()).ok())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // Load app extensions. NSExtension-style extensions live in PlugIns, while
+        // ExtensionKit extensions (EXAppExtensionAttributes) live in Extensions.
+        let mut app_extensions = Vec::new();
+        for dir_name in ["PlugIns", "Extensions"] {
+            let extensions_dir = bundle_path.join(dir_name);
+            if isideload_vfs::fs::metadata(&extensions_dir).is_err() {
+                continue;
+            }
+            app_extensions.extend(
+                isideload_vfs::fs::read_dir(&extensions_dir)
+                    .context(SideloadError::InvalidBundle(format!(
+                        "Failed to read {dir_name} directory"
+                    )))?
+                    .filter_map(|entry| entry.ok())
+                    .filter(|entry| {
+                        entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+                            && isideload_vfs::fs::metadata(&entry.path().join("Info.plist"))
+                                .is_ok()
+                    })
+                    .filter_map(|entry| Bundle::new(entry.path()).ok()),
+            );
+        }
 
         // Load frameworks from Frameworks directory
         let frameworks_dir = bundle_path.join("Frameworks");
